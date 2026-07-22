@@ -98,13 +98,13 @@ async def on_ready():
     print(f"✅ 로그인 성공: {bot.user} (FAQ {len(faq_entries)}개 로드, 답변 모드: {mode})")
 
 
-NUDGE_MSG = "🔒 질문은 **`/질문`** 으로 해주세요! 그래야 질문과 답변이 **나에게만** 보여요."
+NUDGE_MSG = "🔒 질문은 **`/해커톤질문`** 으로 해주세요! 그래야 질문과 답변이 **나에게만** 보여요."
 
 USAGE_MSG = (
     "**질문하는 방법** 🦁\n"
-    "🔒 **`/질문 <내용>`** — 질문·답변이 **나에게만** 보여요 (남들에게 안 보임)\n"
-    "· **`/주제`** — 제가 답할 수 있는 주제 목록 (나에게만 보임)\n"
-    "· **`/도움`** — 이 사용법 안내"
+    "🔒 **`/해커톤질문 <내용>`** — 질문·답변이 **나에게만** 보여요 (남들에게 안 보임)\n"
+    "· **`/해커톤주제`** — 제가 답할 수 있는 주제 목록 (나에게만 보임)\n"
+    "· **`/해커톤도움`** — 이 사용법 안내"
 )
 
 
@@ -119,26 +119,26 @@ async def on_message(message: discord.Message):
     await bot.process_commands(message)  # !리로드(관리자) 등 명령어 처리
 
 
-@bot.tree.command(name="질문", description="FAQ에 대해 물어보면 '나에게만' 보이게 답해드려요")
+@bot.tree.command(name="해커톤질문", description="해커톤 FAQ에 대해 물어보면 '나에게만' 보이게 답해드려요")
 @app_commands.describe(내용="궁금한 내용을 적어주세요")
 async def slash_ask(interaction: discord.Interaction, 내용: str):
-    """/질문 <내용> — 질문과 답변 모두 질문한 본인에게만 보임(ephemeral)."""
+    """/해커톤질문 <내용> — 질문과 답변 모두 질문한 본인에게만 보임(ephemeral)."""
     # Claude 폴백이 몇 초 걸릴 수 있으니 먼저 응답 지연 예약(3초 제한 회피), 둘 다 비공개.
     await interaction.response.defer(ephemeral=True)
     await interaction.followup.send(build_reply(내용), ephemeral=True)
 
 
-@bot.tree.command(name="주제", description="제가 답할 수 있는 주제 목록을 나에게만 보여줘요")
+@bot.tree.command(name="해커톤주제", description="제가 답할 수 있는 주제 목록을 나에게만 보여줘요")
 async def slash_topics(interaction: discord.Interaction):
-    """/주제 — 답변 가능한 주제 목록 (본인에게만 보임)."""
+    """/해커톤주제 — 답변 가능한 주제 목록 (본인에게만 보임)."""
     await interaction.response.send_message(
         f"**제가 답할 수 있는 주제예요!**\n{topic_list(faq_entries)}", ephemeral=True
     )
 
 
-@bot.tree.command(name="도움", description="사용법 안내를 나에게만 보여줘요")
+@bot.tree.command(name="해커톤도움", description="사용법 안내를 나에게만 보여줘요")
 async def slash_help(interaction: discord.Interaction):
-    """/도움 — 사용법 안내 (본인에게만 보임)."""
+    """/해커톤도움 — 사용법 안내 (본인에게만 보임)."""
     await interaction.response.send_message(USAGE_MSG, ephemeral=True)
 
 

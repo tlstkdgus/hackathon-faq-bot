@@ -126,6 +126,36 @@ async def reload_faq(ctx: commands.Context):
     await ctx.reply(f"🔄 FAQ를 다시 불러왔어요! (총 {len(faq_entries)}개 주제)")
 
 
+USAGE_MSG = (
+    "**질문하는 방법** 🦁\n"
+    "· 저를 **멘션**하고 물어보기 — 예: `@질문봇 와이파이 비번 뭐야`\n"
+    "· `!질문 <내용>` — 예: `!질문 sjf 트랙 뭐야`\n"
+    "· `!<키워드>` 로 바로 — 예: `!식사`, `!멘토링`, `!주차`, `!일정`\n"
+    "· `!주제` — 제가 답할 수 있는 주제 목록 보기"
+)
+
+
+@bot.command(name="도움")
+async def help_cmd(ctx: commands.Context):
+    """!도움 — 사용법 안내"""
+    await ctx.reply(USAGE_MSG)
+
+
+@bot.event
+async def on_command_error(ctx: commands.Context, error):
+    """등록 안 된 `!명령`은 질문으로 처리하고, 그 외 에러는 조용히 로깅."""
+    if isinstance(error, commands.MissingPermissions):
+        await ctx.reply("이 명령은 서버 관리자만 사용할 수 있어요.")
+        return
+    if isinstance(error, commands.CommandNotFound):
+        # `!식사`, `!와이파이 비번` 처럼 친 경우 → 프리픽스만 떼고 질문으로 처리
+        question = ctx.message.content.lstrip("!").strip()
+        if question:
+            await ctx.reply(build_reply(question))
+        return
+    print(f"⚠️ 명령 처리 오류: {error}")
+
+
 if __name__ == "__main__":
     if not TOKEN:
         raise SystemExit(

@@ -11,6 +11,7 @@ import os
 import datetime
 
 import discord
+from discord import app_commands
 from discord.ext import commands
 from dotenv import load_dotenv
 
@@ -19,13 +20,14 @@ import llm  # LLM 백엔드 스위치 (claude / openai …) — LLM_PROVIDER 환
 
 load_dotenv()  # .env 파일이 있으면 여기서 읽어와 환경변수로 등록 (README 참고)
 TOKEN = os.environ.get("DISCORD_TOKEN")  # 환경변수로 토큰 관리 (README 참고)
+GUILD_ID = os.environ.get("DISCORD_GUILD_ID")  # 설정하면 /질문 슬래시 커맨드가 즉시 반영(선택)
 FAQ_FILE = "faq.md"
 MISS_LOG_FILE = "unanswered.log"  # 키워드로 못 잡은 질문 기록 (운영진 FAQ 보강용)
 
 intents = discord.Intents.default()
 intents.message_content = True  # 개발자 포털에서 MESSAGE CONTENT INTENT 켜야 함
 
-bot = commands.Bot(command_prefix="!", intents=intents)
+bot = commands.Bot(command_prefix="!", intents=intents, help_command=None)
 faq_entries = load_faq(FAQ_FILE)
 
 NO_MATCH_MSG = (
@@ -81,40 +83,63 @@ def build_reply(question: str) -> str:
 @bot.event
 async def on_ready():
     mode = f"키워드 + {llm.PROVIDER} 폴백" if llm.is_enabled() else "키워드 전용"
+    # 슬래시 커맨드(/질문) 동기화. GUILD_ID가 있으면 해당 서버에 즉시 반영,
+    # 없으면 전역 동기화(디스코드 반영에 최대 1시간 걸릴 수 있음).
+    try:
+        if GUILD_ID:
+            guild = discord.Object(id=int(GUILD_ID))
+            bot.tree.copy_global_to(guild=guild)
+            synced = await bot.tree.sync(guild=guild)
+        else:
+            synced = await bot.tree.sync()
+        print(f"   /슬래시 커맨드 {len(synced)}개 동기화 완료")
+    except Exception as e:
+        print(f"⚠️ 슬래시 커맨드 동기화 실패: {e}")
     print(f"✅ 로그인 성공: {bot.user} (FAQ {len(faq_entries)}개 로드, 답변 모드: {mode})")
+
+
+NUDGE_MSG = "🔒 질문은 **`/질문`** 으로 해주세요! 그래야 질문과 답변이 **나에게만** 보여요."
+
+USAGE_MSG = (
+    "**질문하는 방법** 🦁\n"
+    "🔒 **`/질문 <내용>`** — 질문·답변이 **나에게만** 보여요 (남들에게 안 보임)\n"
+    "· **`/주제`** — 제가 답할 수 있는 주제 목록 (나에게만 보임)\n"
+    "· **`/도움`** — 이 사용법 안내"
+)
 
 
 @bot.event
 async def on_message(message: discord.Message):
     if message.author.bot:
         return
-
-    # 봇을 멘션하면서 질문한 경우
+    # 멘션으로 물어봐도 공개로 답하지 않고 /질문 사용을 안내 (답변은 항상 비공개)
     if bot.user in message.mentions:
-        question = message.content
-        for m in message.mentions:
-            question = question.replace(m.mention, "")
-        question = question.strip()
-        if question:
-            await message.reply(build_reply(question))
-            return
-
-    await bot.process_commands(message)  # !질문, !주제 등 명령어 처리
-
-
-@bot.command(name="질문")
-async def ask(ctx: commands.Context, *, question: str = ""):
-    """!질문 <내용> — FAQ에서 답을 찾아 답변"""
-    if not question.strip():
-        await ctx.reply("`!질문 와이파이 비밀번호 뭐예요?` 처럼 질문을 함께 적어 주세요!")
+        await message.reply(NUDGE_MSG)
         return
-    await ctx.reply(build_reply(question))
+    await bot.process_commands(message)  # !리로드(관리자) 등 명령어 처리
 
 
-@bot.command(name="주제")
-async def topics(ctx: commands.Context):
-    """!주제 — 답변 가능한 주제 목록"""
-    await ctx.reply(f"**제가 답할 수 있는 주제예요!**\n{topic_list(faq_entries)}")
+@bot.tree.command(name="질문", description="FAQ에 대해 물어보면 '나에게만' 보이게 답해드려요")
+@app_commands.describe(내용="궁금한 내용을 적어주세요")
+async def slash_ask(interaction: discord.Interaction, 내용: str):
+    """/질문 <내용> — 질문과 답변 모두 질문한 본인에게만 보임(ephemeral)."""
+    # Claude 폴백이 몇 초 걸릴 수 있으니 먼저 응답 지연 예약(3초 제한 회피), 둘 다 비공개.
+    await interaction.response.defer(ephemeral=True)
+    await interaction.followup.send(build_reply(내용), ephemeral=True)
+
+
+@bot.tree.command(name="주제", description="제가 답할 수 있는 주제 목록을 나에게만 보여줘요")
+async def slash_topics(interaction: discord.Interaction):
+    """/주제 — 답변 가능한 주제 목록 (본인에게만 보임)."""
+    await interaction.response.send_message(
+        f"**제가 답할 수 있는 주제예요!**\n{topic_list(faq_entries)}", ephemeral=True
+    )
+
+
+@bot.tree.command(name="도움", description="사용법 안내를 나에게만 보여줘요")
+async def slash_help(interaction: discord.Interaction):
+    """/도움 — 사용법 안내 (본인에게만 보임)."""
+    await interaction.response.send_message(USAGE_MSG, ephemeral=True)
 
 
 @bot.command(name="리로드")
@@ -126,32 +151,15 @@ async def reload_faq(ctx: commands.Context):
     await ctx.reply(f"🔄 FAQ를 다시 불러왔어요! (총 {len(faq_entries)}개 주제)")
 
 
-USAGE_MSG = (
-    "**질문하는 방법** 🦁\n"
-    "· 저를 **멘션**하고 물어보기 — 예: `@질문봇 와이파이 비번 뭐야`\n"
-    "· `!질문 <내용>` — 예: `!질문 sjf 트랙 뭐야`\n"
-    "· `!<키워드>` 로 바로 — 예: `!식사`, `!멘토링`, `!주차`, `!일정`\n"
-    "· `!주제` — 제가 답할 수 있는 주제 목록 보기"
-)
-
-
-@bot.command(name="도움")
-async def help_cmd(ctx: commands.Context):
-    """!도움 — 사용법 안내"""
-    await ctx.reply(USAGE_MSG)
-
-
 @bot.event
 async def on_command_error(ctx: commands.Context, error):
-    """등록 안 된 `!명령`은 질문으로 처리하고, 그 외 에러는 조용히 로깅."""
+    """공개 `!명령`으로 질문해도 답하지 않고 /질문 사용을 안내한다."""
     if isinstance(error, commands.MissingPermissions):
         await ctx.reply("이 명령은 서버 관리자만 사용할 수 있어요.")
         return
     if isinstance(error, commands.CommandNotFound):
-        # `!식사`, `!와이파이 비번` 처럼 친 경우 → 프리픽스만 떼고 질문으로 처리
-        question = ctx.message.content.lstrip("!").strip()
-        if question:
-            await ctx.reply(build_reply(question))
+        # !질문, !식사 등 → 공개로 답하지 않고 /질문 안내
+        await ctx.reply(NUDGE_MSG)
         return
     print(f"⚠️ 명령 처리 오류: {error}")
 

@@ -26,9 +26,16 @@ def load_faq(path: str = "faq.md") -> list:
 
         ## 다음주제 | 키워드...
         ...
+
+    한 줄짜리 `# 카테고리 이름` (해시 1개)은 봇 기능과 무관한 순수 구획용 제목으로,
+    파싱 전에 제거되어 어떤 항목의 답변에도 섞이지 않는다. faq.md를 VS Code
+    아웃라인/미리보기에서 큰 카테고리별로 한눈에 보기 위한 용도로만 쓰인다.
     """
     with open(path, encoding="utf-8") as f:
         text = f.read()
+
+    # 구획용 "# 카테고리" 제목(해시 1개) 줄 제거 — "## 주제" 파싱엔 영향 없음
+    text = re.sub(r"^#[ \t]+.*$\n?", "", text, flags=re.MULTILINE)
 
     entries = []
     # "## " 로 시작하는 줄을 기준으로 섹션 분리

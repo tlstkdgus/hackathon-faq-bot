@@ -14,6 +14,7 @@ class FaqEntry:
     title: str                      # 주제 이름 (목록에 표시됨)
     keywords: list = field(default_factory=list)  # 매칭에 쓰이는 키워드들
     answer: str = ""                # 답변 본문
+    category: str = ""              # 소속 카테고리 (topic_list 그룹핑용, 매칭에는 안 쓰임)
 
 
 def load_faq(path: str = "faq.md") -> list:
@@ -27,39 +28,57 @@ def load_faq(path: str = "faq.md") -> list:
         ## 다음주제 | 키워드...
         ...
 
-    한 줄짜리 `# 카테고리 이름` (해시 1개)은 봇 기능과 무관한 순수 구획용 제목으로,
-    파싱 전에 제거되어 어떤 항목의 답변에도 섞이지 않는다. faq.md를 VS Code
-    아웃라인/미리보기에서 큰 카테고리별로 한눈에 보기 위한 용도로만 쓰인다.
+    한 줄짜리 `# 카테고리 이름` (해시 1개)은 그 아래 이어지는 "## 주제"들이 속할
+    카테고리 이름을 지정한다. 매칭/답변 내용엔 전혀 영향을 주지 않고,
+    faq.md를 VS Code 아웃라인/미리보기에서 한눈에 보거나 /해커톤주제 목록을
+    카테고리별로 묶어서 보여주는 용도로만 쓰인다.
     """
     with open(path, encoding="utf-8") as f:
-        text = f.read()
-
-    # 구획용 "# 카테고리" 제목(해시 1개) 줄 제거 — "## 주제" 파싱엔 영향 없음
-    text = re.sub(r"^#[ \t]+.*$\n?", "", text, flags=re.MULTILINE)
+        lines = f.read().splitlines()
 
     entries = []
-    # "## " 로 시작하는 줄을 기준으로 섹션 분리
-    sections = re.split(r"^##\s+", text, flags=re.MULTILINE)
-    for sec in sections[1:]:  # 첫 조각은 헤더 이전 내용이므로 무시
-        lines = sec.strip().splitlines()
-        if not lines:
-            continue
-        header = lines[0].strip()
-        body = "\n".join(lines[1:]).strip()
+    category = ""
+    current = None  # 현재 파싱 중인 항목: {"title", "keywords", "category", "body": [줄...]}
 
-        if "|" in header:
-            title, kw_part = header.split("|", 1)
-            keywords = [k.strip() for k in kw_part.split(",") if k.strip()]
-        else:
-            title, keywords = header, []
-        title = title.strip()
-
-        # 제목 자체도 키워드로 사용
-        if title and title not in keywords:
-            keywords.append(title)
-
+    def flush():
+        if current is None:
+            return
+        body = "\n".join(current["body"]).strip()
         if body:
-            entries.append(FaqEntry(title=title, keywords=keywords, answer=body))
+            entries.append(FaqEntry(
+                title=current["title"],
+                keywords=current["keywords"],
+                answer=body,
+                category=current["category"],
+            ))
+
+    for line in lines:
+        m = re.match(r"^##\s+(.*)$", line)
+        if m:
+            flush()
+            header = m.group(1).strip()
+            if "|" in header:
+                title, kw_part = header.split("|", 1)
+                keywords = [k.strip() for k in kw_part.split(",") if k.strip()]
+            else:
+                title, keywords = header, []
+            title = title.strip()
+            if title and title not in keywords:
+                keywords.append(title)  # 제목 자체도 키워드로 사용
+            current = {"title": title, "keywords": keywords, "category": category, "body": []}
+            continue
+
+        m = re.match(r"^#\s+(.*)$", line)  # 해시 1개 = 구획용 카테고리 제목
+        if m:
+            flush()
+            current = None
+            category = m.group(1).strip()
+            continue
+
+        if current is not None:
+            current["body"].append(line)
+
+    flush()
     return entries
 
 
@@ -135,5 +154,13 @@ def find_answer(question: str, entries: list, min_score: float = MIN_SCORE):
 
 
 def topic_list(entries: list) -> str:
-    """등록된 주제 목록 문자열."""
-    return "\n".join(f"• {e.title}" for e in entries)
+    """등록된 주제 목록 문자열. faq.md의 카테고리(# 제목)별로 묶어서 보여준다."""
+    groups: dict = {}
+    for e in entries:
+        groups.setdefault(e.category or "기타", []).append(e.title)
+
+    parts = []
+    for category, titles in groups.items():
+        header = f"**{category}**" if category else "**기타**"
+        parts.append(header + "\n" + "\n".join(f"• {t}" for t in titles))
+    return "\n\n".join(parts)

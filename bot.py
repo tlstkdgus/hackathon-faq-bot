@@ -24,6 +24,7 @@ TOKEN = os.environ.get("DISCORD_TOKEN")  # 환경변수로 토큰 관리 (README
 GUILD_ID = os.environ.get("DISCORD_GUILD_ID")  # 설정하면 /질문 슬래시 커맨드가 즉시 반영(선택)
 FAQ_FILE = "faq.md"
 MISS_LOG_FILE = "unanswered.log"  # 키워드로 못 잡은 질문 기록 (운영진 FAQ 보강용)
+STATS_LOG_FILE = "stats.log"  # 모든 질문 사용 기록 (통계용: 사용자ID + 결과만, 질문 본문 없음)
 
 intents = discord.Intents.default()
 intents.message_content = True  # 개발자 포털에서 MESSAGE CONTENT INTENT 켜야 함
@@ -53,17 +54,72 @@ def log_miss(question: str, handled_by: str) -> None:
         print(f"⚠️ 로그 기록 실패: {e}")
 
 
-def build_reply(question: str) -> str:
+def log_usage(user_id: int, category: str) -> None:
+    """모든 질문을 통계용으로 기록한다 (질문 본문 없이 사용자ID + 결과만 → 가볍고 프라이버시 최소화).
+
+    category: 'hit:<주제명>'(키워드 매칭 성공) / 'claude'(LLM이 답함) / 'nomatch'(둘 다 실패)
+    /해커톤통계 명령이 이 파일을 읽어 총 질문 수·순 사용자 수·인기 주제를 집계한다.
+    """
+    ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    line = f"{ts}\t{user_id}\t{category}\n"
+    try:
+        with open(STATS_LOG_FILE, "a", encoding="utf-8") as f:
+            f.write(line)
+    except Exception as e:
+        print(f"⚠️ 통계 기록 실패: {e}")
+
+
+def compute_stats() -> str:
+    """stats.log를 읽어 총 질문 수·순 사용자 수·처리 방식·인기 주제 TOP5를 요약한다."""
+    try:
+        with open(STATS_LOG_FILE, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+    except FileNotFoundError:
+        return "아직 기록된 질문이 없어요."
+
+    users = set()
+    topic_counts: dict[str, int] = {}
+    hit = claude = nomatch = 0
+
+    for line in lines:
+        parts = line.rstrip("\n").split("\t")
+        if len(parts) != 3:
+            continue
+        _, user_id, category = parts
+        users.add(user_id)
+        if category.startswith("hit:"):
+            hit += 1
+            topic = category.split(":", 1)[1]
+            topic_counts[topic] = topic_counts.get(topic, 0) + 1
+        elif category == "nomatch":
+            nomatch += 1
+        else:
+            claude += 1  # llm.PROVIDER 값 (claude, openai 등)
+
+    top5 = sorted(topic_counts.items(), key=lambda x: -x[1])[:5]
+    top5_str = "\n".join(f"  {i+1}. {t} ({c}회)" for i, (t, c) in enumerate(top5)) or "  (아직 없음)"
+
+    return (
+        "**📊 해커톤 FAQ 봇 사용 통계**\n"
+        f"- 총 질문 수: **{len(lines)}건**\n"
+        f"- 사용한 인원(중복 제외): **{len(users)}명**\n"
+        f"- 키워드로 바로 답함: {hit}건 / LLM이 답함: {claude}건 / 못 찾음: {nomatch}건\n\n"
+        f"**🔥 인기 주제 TOP5**\n{top5_str}"
+    )
+
+
+def build_reply(question: str, user_id: int) -> str:
     """응답 생성의 단일 진입점.
 
     1) 먼저 강화된 키워드 매칭으로 답을 찾는다 (빠르고 무료).
     2) 키워드로 확실히 못 찾은 경우에만 Claude Haiku로 자연어 답변 시도
        (ANTHROPIC_API_KEY가 있을 때). → 대부분은 무료, 애매한 질문만 API 사용.
     3) Claude도 못 쓰거나 오류면 안내 메시지.
-    키워드가 못 잡은 질문은 모두 로그에 남겨 운영진이 FAQ를 보강할 수 있게 한다.
+    키워드가 못 잡은 질문은 unanswered.log에, 모든 질문은 stats.log(통계용)에 남긴다.
     """
     entry = find_answer(question, faq_entries)
     if entry is not None:
+        log_usage(user_id, f"hit:{entry.title}")
         return f"**📌 {entry.title}**\n{entry.answer}"
 
     # 키워드로 못 찾음 → LLM에게 넘김 (자연어로 이해 시도)
@@ -78,6 +134,7 @@ def build_reply(question: str) -> str:
             print(f"⚠️ LLM({llm.PROVIDER}) 오류: {e}")
 
     log_miss(question, handled_by)
+    log_usage(user_id, handled_by)
     return reply
 
 
@@ -105,7 +162,8 @@ USAGE_MSG = (
     "**질문하는 방법** 🦁\n"
     "🔒 **`/해커톤질문 <내용>`** — 질문·답변이 **나에게만** 보여요 (남들에게 안 보임)\n"
     "· **`/해커톤주제`** — 제가 답할 수 있는 주제 목록 (나에게만 보임)\n"
-    "· **`/해커톤도움`** — 이 사용법 안내"
+    "· **`/해커톤도움`** — 이 사용법 안내\n"
+    "· **`/해커톤통계`** — (운영진 전용) 사용 통계"
 )
 
 
@@ -129,7 +187,7 @@ async def slash_ask(interaction: discord.Interaction, 내용: str):
     # build_reply 내부의 Claude 호출(anthropic SDK)이 동기(blocking) 함수라
     # 그대로 부르면 응답을 기다리는 동안 봇 전체(다른 학생들 요청 포함)가 멈춘다.
     # 별도 스레드에서 돌려서 이벤트 루프가 다른 사람 요청을 계속 처리하게 한다.
-    reply = await asyncio.to_thread(build_reply, 내용)
+    reply = await asyncio.to_thread(build_reply, 내용, interaction.user.id)
     await interaction.followup.send(reply, ephemeral=True)
 
 
@@ -145,6 +203,18 @@ async def slash_topics(interaction: discord.Interaction):
 async def slash_help(interaction: discord.Interaction):
     """/해커톤도움 — 사용법 안내 (본인에게만 보임)."""
     await interaction.response.send_message(USAGE_MSG, ephemeral=True)
+
+
+@bot.tree.command(name="해커톤통계", description="[관리자] 지금까지 질문 사용 통계를 보여줘요")
+async def slash_stats(interaction: discord.Interaction):
+    """/해커톤통계 — 서버 관리 권한이 있는 사람만 볼 수 있음 (본인에게만 표시)."""
+    perms = interaction.user.guild_permissions if isinstance(interaction.user, discord.Member) else None
+    if not (perms and perms.manage_guild):
+        await interaction.response.send_message("이 명령은 서버 관리자만 사용할 수 있어요.", ephemeral=True)
+        return
+    await interaction.response.defer(ephemeral=True)
+    summary = await asyncio.to_thread(compute_stats)
+    await interaction.followup.send(summary, ephemeral=True)
 
 
 @bot.command(name="리로드")

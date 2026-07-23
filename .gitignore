@@ -11,5 +11,8 @@ venv/
 # 못 찾은 질문 로그 (학생 질문 포함 → 커밋 금지)
 unanswered.log
 
+# 사용 통계 로그 (사용자 ID 포함 → 커밋 금지)
+stats.log
+
 # 노션 연동 시 로컬 폴백 캐시 (추후)
 faq_cache.md

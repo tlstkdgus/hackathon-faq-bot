@@ -15,12 +15,17 @@ from discord import app_commands
 from discord.ext import commands
 from dotenv import load_dotenv
 
+# .env 로드는 반드시 아래의 로컬 모듈 import보다 먼저 실행해야 한다.
+# hours.py, llm.py는 import되는 순간(모듈 최상단)에 os.environ에서 설정값을
+# 읽어 상수로 고정하므로, load_dotenv()가 늦게 실행되면 .env 값이 무시되고
+# 코드에 적힌 기본값만 계속 쓰이게 된다 (예: QA_END_HOUR가 항상 17로 고정되던 버그).
+load_dotenv()  # .env 파일이 있으면 여기서 읽어와 환경변수로 등록 (README 참고)
+
 from faq_engine import load_faq, find_answer, topic_list
 import llm  # LLM 백엔드 스위치 (claude / openai …) — LLM_PROVIDER 환경변수로 선택
 from stats_engine import log_miss, log_usage, compute_stats
 import hours  # 질문 운영시간 판단 (QA_START_HOUR ~ QA_END_HOUR)
 
-load_dotenv()  # .env 파일이 있으면 여기서 읽어와 환경변수로 등록 (README 참고)
 TOKEN = os.environ.get("DISCORD_TOKEN")  # 환경변수로 토큰 관리 (README 참고)
 GUILD_ID = os.environ.get("DISCORD_GUILD_ID")  # 설정하면 /질문 슬래시 커맨드가 즉시 반영(선택)
 FAQ_FILE = "faq.md"

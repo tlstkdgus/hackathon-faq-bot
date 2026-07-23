@@ -9,7 +9,6 @@
 
 import os
 import asyncio
-import datetime
 
 import discord
 from discord import app_commands
@@ -18,13 +17,13 @@ from dotenv import load_dotenv
 
 from faq_engine import load_faq, find_answer, topic_list
 import llm  # LLM 백엔드 스위치 (claude / openai …) — LLM_PROVIDER 환경변수로 선택
+from stats_engine import log_miss, log_usage, compute_stats
+import hours  # 질문 운영시간 판단 (QA_START_HOUR ~ QA_END_HOUR)
 
 load_dotenv()  # .env 파일이 있으면 여기서 읽어와 환경변수로 등록 (README 참고)
 TOKEN = os.environ.get("DISCORD_TOKEN")  # 환경변수로 토큰 관리 (README 참고)
 GUILD_ID = os.environ.get("DISCORD_GUILD_ID")  # 설정하면 /질문 슬래시 커맨드가 즉시 반영(선택)
 FAQ_FILE = "faq.md"
-MISS_LOG_FILE = "unanswered.log"  # 키워드로 못 잡은 질문 기록 (운영진 FAQ 보강용)
-STATS_LOG_FILE = "stats.log"  # 모든 질문 사용 기록 (통계용: 사용자ID + 결과만, 질문 본문 없음)
 
 intents = discord.Intents.default()
 intents.message_content = True  # 개발자 포털에서 MESSAGE CONTENT INTENT 켜야 함
@@ -37,75 +36,6 @@ NO_MATCH_MSG = (
     "`!주제` 를 입력하면 제가 답할 수 있는 주제 목록을 볼 수 있어요.\n"
     "그래도 해결이 안 되면 운영진에게 직접 문의해 주세요!"
 )
-
-
-def log_miss(question: str, handled_by: str) -> None:
-    """키워드로 못 잡은 질문을 로그 파일에 남긴다.
-
-    handled_by: 'claude'(Claude가 대신 답함) 또는 'nomatch'(아무도 못 답함).
-    운영진은 이 로그를 보고 자주 나오는 표현을 faq.md 키워드에 추가하면 된다.
-    """
-    ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    line = f"{ts}\t[{handled_by}]\t{question}\n"
-    try:
-        with open(MISS_LOG_FILE, "a", encoding="utf-8") as f:
-            f.write(line)
-    except Exception as e:
-        print(f"⚠️ 로그 기록 실패: {e}")
-
-
-def log_usage(user_id: int, category: str) -> None:
-    """모든 질문을 통계용으로 기록한다 (질문 본문 없이 사용자ID + 결과만 → 가볍고 프라이버시 최소화).
-
-    category: 'hit:<주제명>'(키워드 매칭 성공) / 'claude'(LLM이 답함) / 'nomatch'(둘 다 실패)
-    /해커톤통계 명령이 이 파일을 읽어 총 질문 수·순 사용자 수·인기 주제를 집계한다.
-    """
-    ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    line = f"{ts}\t{user_id}\t{category}\n"
-    try:
-        with open(STATS_LOG_FILE, "a", encoding="utf-8") as f:
-            f.write(line)
-    except Exception as e:
-        print(f"⚠️ 통계 기록 실패: {e}")
-
-
-def compute_stats() -> str:
-    """stats.log를 읽어 총 질문 수·순 사용자 수·처리 방식·인기 주제 TOP5를 요약한다."""
-    try:
-        with open(STATS_LOG_FILE, "r", encoding="utf-8") as f:
-            lines = f.readlines()
-    except FileNotFoundError:
-        return "아직 기록된 질문이 없어요."
-
-    users = set()
-    topic_counts: dict[str, int] = {}
-    hit = claude = nomatch = 0
-
-    for line in lines:
-        parts = line.rstrip("\n").split("\t")
-        if len(parts) != 3:
-            continue
-        _, user_id, category = parts
-        users.add(user_id)
-        if category.startswith("hit:"):
-            hit += 1
-            topic = category.split(":", 1)[1]
-            topic_counts[topic] = topic_counts.get(topic, 0) + 1
-        elif category == "nomatch":
-            nomatch += 1
-        else:
-            claude += 1  # llm.PROVIDER 값 (claude, openai 등)
-
-    top5 = sorted(topic_counts.items(), key=lambda x: -x[1])[:5]
-    top5_str = "\n".join(f"  {i+1}. {t} ({c}회)" for i, (t, c) in enumerate(top5)) or "  (아직 없음)"
-
-    return (
-        "**📊 해커톤 FAQ 봇 사용 통계**\n"
-        f"- 총 질문 수: **{len(lines)}건**\n"
-        f"- 사용한 인원(중복 제외): **{len(users)}명**\n"
-        f"- 키워드로 바로 답함: {hit}건 / LLM이 답함: {claude}건 / 못 찾음: {nomatch}건\n\n"
-        f"**🔥 인기 주제 TOP5**\n{top5_str}"
-    )
 
 
 def build_reply(question: str, user_id: int) -> str:
@@ -154,13 +84,21 @@ async def on_ready():
     except Exception as e:
         print(f"⚠️ 슬래시 커맨드 동기화 실패: {e}")
     print(f"✅ 로그인 성공: {bot.user} (FAQ {len(faq_entries)}개 로드, 답변 모드: {mode})")
+    print(f"   질문 운영시간: 매일 {hours.QA_START_HOUR}:00~{hours.QA_END_HOUR}:00 (KST)")
 
 
 NUDGE_MSG = "🔒 질문은 **`/해커톤질문`** 으로 해주세요! 그래야 질문과 답변이 **나에게만** 보여요."
 
+CLOSED_MSG = (
+    f"🌙 지금은 질문 운영시간이 아니에요.\n"
+    f"매일 **{hours.QA_START_HOUR}:00 ~ {hours.QA_END_HOUR}:00** 에만 답변드리고 있어요. "
+    "운영시간에 다시 물어봐 주세요!"
+)
+
 USAGE_MSG = (
     "**질문하는 방법** 🦁\n"
     "🔒 **`/해커톤질문 <내용>`** — 질문·답변이 **나에게만** 보여요 (남들에게 안 보임)\n"
+    f"   (운영시간: 매일 {hours.QA_START_HOUR}:00~{hours.QA_END_HOUR}:00)\n"
     "· **`/해커톤주제`** — 제가 답할 수 있는 주제 목록 (나에게만 보임)\n"
     "· **`/해커톤도움`** — 이 사용법 안내\n"
     "· **`/해커톤통계`** — (운영진 전용) 사용 통계"
@@ -182,6 +120,9 @@ async def on_message(message: discord.Message):
 @app_commands.describe(내용="궁금한 내용을 적어주세요")
 async def slash_ask(interaction: discord.Interaction, 내용: str):
     """/해커톤질문 <내용> — 질문과 답변 모두 질문한 본인에게만 보임(ephemeral)."""
+    if not hours.is_operating_hours():
+        await interaction.response.send_message(CLOSED_MSG, ephemeral=True)
+        return
     # Claude 폴백이 몇 초 걸릴 수 있으니 먼저 응답 지연 예약(3초 제한 회피), 둘 다 비공개.
     await interaction.response.defer(ephemeral=True)
     # build_reply 내부의 Claude 호출(anthropic SDK)이 동기(blocking) 함수라

@@ -8,6 +8,7 @@
 """
 
 import os
+import asyncio
 import datetime
 
 import discord
@@ -125,7 +126,11 @@ async def slash_ask(interaction: discord.Interaction, 내용: str):
     """/해커톤질문 <내용> — 질문과 답변 모두 질문한 본인에게만 보임(ephemeral)."""
     # Claude 폴백이 몇 초 걸릴 수 있으니 먼저 응답 지연 예약(3초 제한 회피), 둘 다 비공개.
     await interaction.response.defer(ephemeral=True)
-    await interaction.followup.send(build_reply(내용), ephemeral=True)
+    # build_reply 내부의 Claude 호출(anthropic SDK)이 동기(blocking) 함수라
+    # 그대로 부르면 응답을 기다리는 동안 봇 전체(다른 학생들 요청 포함)가 멈춘다.
+    # 별도 스레드에서 돌려서 이벤트 루프가 다른 사람 요청을 계속 처리하게 한다.
+    reply = await asyncio.to_thread(build_reply, 내용)
+    await interaction.followup.send(reply, ephemeral=True)
 
 
 @bot.tree.command(name="해커톤주제", description="제가 답할 수 있는 주제 목록을 나에게만 보여줘요")

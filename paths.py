@@ -37,6 +37,11 @@ FAQ_FILE = BASE_DIR / "faq.md"
 MISS_LOG_FILE = DATA_DIR / "unanswered.log"   # 키워드로 못 잡은 질문
 STATS_LOG_FILE = DATA_DIR / "stats.log"       # 사용 통계
 
+# 일일 다이제스트를 마지막으로 보낸 시각을 적어두는 파일.
+# 이게 있어야 봇이 잠깐 꺼졌다 켜져도 그 사이 질문을 빠뜨리지 않고,
+# 하루에 두 번 실행돼도 같은 내용을 중복 전송하지 않는다.
+DIGEST_STATE_FILE = DATA_DIR / "digest_state.txt"
+
 
 def ensure_data_dir() -> None:
     """DATA_DIR이 없으면 만든다. 로그를 처음 쓰기 전에 한 번 호출하면 된다."""

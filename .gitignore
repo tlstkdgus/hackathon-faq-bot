@@ -28,6 +28,9 @@ unanswered.log
 # 사용 통계 로그 (사용자 ID 포함 → 커밋 금지)
 stats.log
 
+# 일일 리포트를 마지막으로 보낸 시각 (실행 중 생성되는 상태 파일)
+digest_state.txt
+
 # 노션 연동 시 로컬 폴백 캐시 (추후)
 faq_cache.md
 

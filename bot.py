@@ -29,9 +29,11 @@ if sys.version_info < (3, 10):
         "우분투라면: sudo apt install python3.10  또는 우분투 22.04 이상을 쓰세요."
     )
 
+import datetime
+
 import discord
 from discord import app_commands
-from discord.ext import commands
+from discord.ext import commands, tasks
 from dotenv import load_dotenv
 
 # .env 로드는 반드시 아래의 로컬 모듈 import보다 먼저 실행해야 한다.
@@ -44,10 +46,21 @@ from faq_engine import load_faq, find_answer, topic_list
 import llm  # LLM 백엔드 스위치 (claude / openai …) — LLM_PROVIDER 환경변수로 선택
 from stats_engine import log_miss, log_usage, compute_stats
 import hours  # 질문 운영시간 판단 (QA_START_HOUR ~ QA_END_HOUR)
+import digest  # 미답변 질문 분석 → 운영진용 일일 리포트
 from paths import FAQ_FILE, DATA_DIR  # 절대경로. 서버(systemd)에서 실행해도 안전하다
 
 TOKEN = os.environ.get("DISCORD_TOKEN")  # 환경변수로 토큰 관리 (README 참고)
 GUILD_ID = os.environ.get("DISCORD_GUILD_ID")  # 설정하면 /질문 슬래시 커맨드가 즉시 반영(선택)
+
+# ── 일일 미답변 리포트 ──
+# 매일 정해진 시각에 '키워드로 못 잡은 질문' 요약을 지정 채널로 보낸다.
+# ⚠️ 리포트에는 학생 질문 원문이 담기므로 반드시 운영진만 보는 채널을 지정할 것.
+DIGEST_CHANNEL_ID = os.environ.get("DIGEST_CHANNEL_ID", "").strip()
+try:
+    DIGEST_HOUR = int(os.environ.get("DIGEST_HOUR", "9"))
+except ValueError:
+    DIGEST_HOUR = 9
+    print("⚠️ DIGEST_HOUR 값이 숫자가 아닙니다. 기본값 9시를 사용합니다.")
 
 # 디스코드 메시지 한 건의 최대 길이. 넘기면 전송 자체가 실패(HTTP 400)하므로
 # 보내기 직전에 잘라준다. faq.md에 운영진이 아주 긴 답변을 넣어도 봇이 죽지 않게 하는 안전장치.
@@ -146,6 +159,47 @@ async def on_ready():
     print(f"   로그 폴더: {DATA_DIR}")
     if not faq_entries:
         print("❗ FAQ가 0개라 지금은 어떤 질문에도 답할 수 없습니다. faq.md를 확인하세요.")
+
+    # on_ready는 재접속 때마다 다시 호출된다. 그때 루프를 또 시작하면
+    # 리포트가 하루에 여러 번 나가므로 실행 중인지 먼저 확인한다.
+    if DIGEST_CHANNEL_ID and not daily_digest.is_running():
+        daily_digest.start()
+        print(f"   미답변 리포트: 매일 {DIGEST_HOUR}:00 (KST) → 채널 {DIGEST_CHANNEL_ID}")
+    elif not DIGEST_CHANNEL_ID:
+        print("   미답변 리포트: 꺼짐 (DIGEST_CHANNEL_ID 미설정)")
+
+
+@tasks.loop(time=datetime.time(hour=DIGEST_HOUR, minute=0, tzinfo=hours.KST))
+async def daily_digest():
+    """매일 정해진 시각에 '키워드로 못 잡은 질문' 요약을 운영진 채널로 보낸다.
+
+    ⚠️ 리포트에는 학생 질문 원문이 들어간다. DIGEST_CHANNEL_ID에는
+    반드시 운영진만 볼 수 있는 채널을 지정할 것.
+
+    전송에 성공했을 때만 '마지막 실행 시각'을 저장한다. 그래야 채널을 잘못
+    지정했거나 권한이 없어 실패했을 때, 다음 날 그 기간까지 함께 보고된다.
+    """
+    try:
+        channel = bot.get_channel(int(DIGEST_CHANNEL_ID))
+        if channel is None:
+            # 캐시에 없으면 API로 직접 조회 (봇 재시작 직후 등)
+            channel = await bot.fetch_channel(int(DIGEST_CHANNEL_ID))
+    except Exception as e:
+        print(f"⚠️ 리포트 채널({DIGEST_CHANNEL_ID})을 찾을 수 없습니다: {e}")
+        return
+
+    try:
+        report, _ = await asyncio.to_thread(digest.make_digest, faq_entries)
+        await channel.send(clip(report))
+        await asyncio.to_thread(digest.save_last_run)
+    except Exception as e:
+        print(f"⚠️ 미답변 리포트 전송 실패: {e}")
+
+
+@daily_digest.before_loop
+async def _before_digest():
+    """봇이 디스코드에 완전히 연결된 뒤에 루프를 돌린다."""
+    await bot.wait_until_ready()
 
 
 NUDGE_MSG = "🔒 질문은 **`/해커톤질문`** 으로 해주세요! 그래야 질문과 답변이 **나에게만** 보여요."

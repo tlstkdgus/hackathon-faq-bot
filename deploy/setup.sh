@@ -54,8 +54,20 @@ ok "실행 사용자  : $RUN_USER"
 info "1/7  시스템 패키지 설치"
 # ─────────────────────────────────────────────────────────────
 
-sudo apt-get update -qq
-sudo apt-get install -y -qq python3 python3-venv python3-pip git tzdata
+# apt가 중간에 대화형 화면을 띄우지 않게 한다.
+#
+# 우분투 22.04부터는 라이브러리가 갱신되면 needrestart가
+# "어떤 서비스를 재시작할까요?" 파란 화면을 띄우고 입력을 기다린다.
+# 설치 스크립트가 거기서 멈춰버리므로 자동 응답으로 넘긴다.
+#   DEBIAN_FRONTEND=noninteractive : 설정 파일 관련 질문 자동 처리
+#   NEEDRESTART_MODE=a             : 필요한 서비스를 알아서 재시작
+# (sshd를 재시작해도 이미 연결된 SSH 세션은 끊기지 않는다)
+export DEBIAN_FRONTEND=noninteractive
+export NEEDRESTART_MODE=a
+export NEEDRESTART_SUSPEND=1
+
+sudo -E apt-get update -qq
+sudo -E apt-get install -y -qq python3 python3-venv python3-pip git tzdata
 ok "패키지 설치 완료"
 
 # 이 프로젝트는 파이썬 3.10 이상이 필요하다 (bot.py 상단에서도 검사한다).

@@ -5,6 +5,12 @@
 .env
 .env.local
 
+# GitHub 개인 액세스 토큰 (Claude가 push할 때 읽는 파일)
+# 이 파일이 커밋되면 토큰이 그대로 공개된다. 절대 금지.
+.gh_token
+*.token
+.git-credentials
+
 # 단, 값이 비어 있는 예시 파일은 커밋해야 한다.
 # (예전엔 .gitignore에 .env.example이 그냥 들어 있어서,
 #  예시 파일을 만들어도 git이 무시해 버리는 문제가 있었다.)

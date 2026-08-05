@@ -33,7 +33,19 @@ info "0/7  환경 확인"
 
 [ "$(id -u)" -ne 0 ] || die "root(sudo)로 실행하지 마세요. 일반 사용자로 'bash deploy/setup.sh' 하세요."
 command -v apt-get >/dev/null 2>&1 || die "우분투/데비안 계열이 아닙니다. DEPLOY.md의 수동 설치를 참고하세요."
-sudo -v || die "sudo 권한이 필요합니다."
+# sudo를 쓸 수 있는지 확인한다.
+#
+# 주의: 여기서 `sudo -v`를 쓰면 안 된다. 오라클/AWS 등의 클라우드 이미지는
+# 기본 사용자에게 NOPASSWD sudo를 주지만, `sudo -v`는 그 설정과 무관하게
+# 비밀번호를 물어보는 경우가 있다. 게다가 클라우드 이미지의 기본 계정은
+# 비밀번호 자체가 설정돼 있지 않아서, 입력할 값이 없어 설치가 멈춰버린다.
+#
+# `sudo -n true`는 "비밀번호 없이 되는지"만 조용히(non-interactive) 확인한다.
+if sudo -n true 2>/dev/null; then
+    ok "sudo 사용 가능 (비밀번호 불필요)"
+else
+    warn "sudo가 비밀번호를 요구합니다. 아래 진행 중 비밀번호 입력이 필요할 수 있습니다."
+fi
 
 ok "프로젝트 폴더: $PROJECT_DIR"
 ok "실행 사용자  : $RUN_USER"

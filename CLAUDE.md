@@ -8,69 +8,97 @@
 해커톤에서 학생들이 자주 묻는 질문(일정, 장소, 와이파이, 제출 방법 등)에
 자동으로 답해주는 디스코드 봇. 운영진이 노션에 정리한 내용을 지식으로 사용한다.
 
-## 현재 구현 상태 (v1 — 완성, 동작 확인됨)
+## 현재 구현 상태 (동작 확인됨)
 
-키워드 매칭 기반 FAQ 봇. Python 3.9+ / discord.py 2.3+.
+Python 3.10+ / discord.py 2.3+. 키워드 매칭 → Claude 폴백의 2단 구조.
 
 | 파일 | 역할 |
 |---|---|
-| `bot.py` | 디스코드 봇 본체. 멘션 질문, `!질문`, `!주제`, `!리로드` 명령 처리 |
-| `faq_engine.py` | `faq.md` 파싱 + 키워드 매칭 로직 (discord 의존성 없음, 단독 테스트 가능) |
-| `faq.md` | FAQ 데이터. `## 주제 \| 키워드1, 키워드2` 헤더 + 답변 본문 형식 |
-| `requirements.txt` | `discord.py>=2.3` |
-| `README.md` | 봇 생성/초대/실행/노션 내용 넣는 법 안내 (운영진용) |
+| `bot.py` | 봇 본체. 슬래시 커맨드 4개 + `!리로드` 처리 |
+| `faq_engine.py` | `faq.md` 파싱 + 키워드 매칭 (discord 의존성 없음) |
+| `claude_engine.py` | Claude Haiku 자연어 답변 (discord 의존성 없음) |
+| `llm.py` | LLM 백엔드 스위치 (`LLM_PROVIDER`). 현재 claude만 구현 |
+| `stats_engine.py` | 질문 로그 기록/집계 (discord 의존성 없음) |
+| `stats_cli.py` | 터미널에서 통계 확인 |
+| `hours.py` | 질문 운영시간 판단 (discord 의존성 없음) |
+| `paths.py` | 파일 경로 중앙 관리 (절대경로) |
+| `faq.md` | FAQ 데이터. 현재 9개 카테고리 / 49개 항목 |
+| `deploy/` | 오라클 서버 배포 세트 (systemd, setup.sh, update.sh, DEPLOY.md) |
 
-핵심 설계:
-- `faq_engine.load_faq()` → `FaqEntry(title, keywords, answer)` 리스트
-- `find_answer(question, entries)` → 질문 문자열을 정규화(소문자+공백제거) 후
-  키워드 포함 여부로 스코어링 (매칭 개수, 매칭 길이 합). 없으면 `None`
-- `bot.py`의 `build_reply(question)` 가 응답 생성의 단일 진입점.
-  **답변 엔진을 업그레이드할 때 이 함수만 교체하면 됨** (의도된 설계)
-- 토큰은 `DISCORD_TOKEN` 환경변수로 주입. 코드에 하드코딩 금지
-- 디스코드 개발자 포털에서 MESSAGE CONTENT INTENT 필수
+### 핵심 설계
 
-동작 확인: 파싱 8개 항목, "와이파이 비번 뭐예요?" → 와이파이,
-"혼자 왔는데 팀 어떻게 구해요" → 팀 구성 등 매칭 테스트 통과.
+- `faq_engine.load_faq()` → `FaqEntry(title, keywords, answer, category)` 리스트
+  - `# 카테고리` (해시 1개) = 구획용. 매칭엔 영향 없고 `/해커톤주제` 그룹핑에만 쓰임
+  - `## 주제 | 키워드1, 키워드2` (해시 2개) = 실제 항목
+- `find_answer()` — 정규화(소문자+공백제거) 후 키워드별 (일치도 × 키워드 길이) 합산.
+  `MIN_SCORE=1.0` 미만이면 `None` 반환 → Claude 폴백으로 넘어감.
+  `FUZZY_THRESHOLD=0.82`로 오타/변형도 일부 잡음
+- **`bot.build_reply()`가 응답 생성의 단일 진입점.** 답변 엔진을 바꿀 땐 이 함수만
+  교체하면 된다 (의도된 설계)
+- `llm.py` 스위치 구조 — `openai_engine.py`를 같은 인터페이스로 만들고
+  `LLM_PROVIDER=openai`만 넣으면 나머지 코드는 안 건드려도 됨
+- 질문/답변은 **항상 ephemeral**(본인에게만 보임). 공개 채팅 멘션·`!명령`에는
+  안내 메시지(`NUDGE_MSG`)만 나감
+- Claude 호출은 동기 함수라 `asyncio.to_thread`로 감싼다.
+  안 그러면 API 응답을 기다리는 동안 봇 전체가 멈춘다
+- 모든 경로는 `paths.py`에서 `__file__` 기준 절대경로로 계산.
+  상대경로를 쓰면 systemd 실행 시 cwd가 `/`가 되어 faq.md를 못 찾는다
 
-## 다음 작업 후보 (우선순위 순)
+### 환경변수
+
+필수는 `DISCORD_TOKEN` 하나. 나머지는 전부 선택.
+전체 목록과 설명은 `.env.example` 참고. 코드에 토큰 하드코딩 금지.
+
+디스코드 개발자 포털에서 **MESSAGE CONTENT INTENT** 필수.
+
+## 배포
+
+오라클 클라우드 Always Free VM + systemd. 절차는 `deploy/DEPLOY.md`.
+
+- 서버 접속 후 `bash deploy/setup.sh` 하나로 설치 완료 (여러 번 실행해도 안전)
+- 코드 갱신은 `bash deploy/update.sh`
+- **서버리스 불가**: websocket 상시 연결이 필요하다 (`intents.message_content`, `on_message`)
+- **인바운드 포트 불필요**: 아웃바운드만 쓰므로 Security List/iptables 손댈 것 없음
+- Shape은 AMD Micro(1GB)로 충분. ARM은 "Out of capacity"로 잘 안 잡히는데
+  이 봇엔 과할 정도의 사양이라 기다릴 이유가 없다
+
+## 다음 작업 후보
 
 ### 1. Notion API 실시간 연동
 
 현재는 노션 내용을 `faq.md`에 수동 복붙. 이를 Notion API로 자동화한다.
 
-- 패키지: `notion-client` (공식 Python SDK)
+- 패키지: `notion-client`
 - 준비물: https://www.notion.so/my-integrations 에서 Internal Integration 생성
-  → `NOTION_TOKEN` 환경변수. 대상 노션 페이지에서 ⋯ → Connections → 해당 integration 연결
+  → `NOTION_TOKEN`. 대상 페이지에서 ⋯ → Connections → 해당 integration 연결
 - 구현 방향:
-  - `notion_sync.py` 신규 모듈: 지정한 페이지(들)의 블록을 읽어
-    `faq.md`와 같은 구조(`FaqEntry` 리스트)로 변환
-  - 노션 쪽 규칙: heading_2 블록을 "주제 | 키워드들"로, 그 아래 블록들을 답변으로 파싱
-    (기존 faq.md 규칙과 동일한 컨벤션 유지)
-  - `!리로드` 명령이 노션에서 다시 fetch하도록 확장 + 시작 시 1회 로드
-  - 노션 API 장애 시 마지막 성공본을 로컬 캐시(`faq_cache.md`)로 폴백
+  - `notion_sync.py` 신규 모듈: 지정 페이지의 블록을 `FaqEntry` 리스트로 변환
+  - heading_2 블록을 "주제 | 키워드들"로, 그 아래 블록들을 답변으로 파싱
+    (기존 faq.md 컨벤션 유지)
+  - `!리로드`가 노션에서 다시 fetch하도록 확장 + 시작 시 1회 로드
+  - 노션 API 장애 시 마지막 성공본을 `faq_cache.md`로 폴백
 - 페이지 ID는 `NOTION_PAGE_ID` 환경변수로
 
-### 2. Claude API 연동 (자연어 답변)
+### 2. 테스트 추가
 
-키워드로 못 잡는 다양한 질문 표현에 대응.
+`faq_engine` / `hours` / `stats_engine`은 discord 의존성이 없어 단독 테스트가 쉽다.
+pytest로 매칭 정확도 회귀 테스트를 짜두면 키워드를 늘릴 때 안심할 수 있다.
 
-- 패키지: `anthropic`
-- `build_reply()` 교체: FAQ 전체(또는 키워드 매칭 상위 후보)를 컨텍스트로 넣고
-  `claude-haiku-4-5` 모델에 질문 전달. 시스템 프롬프트에
-  "제공된 자료에 없는 내용은 모른다고 답하고 운영진 문의 안내" 규칙 포함
-- 비용 절감: 프롬프트 캐싱 사용 (FAQ 컨텍스트가 매 요청 동일하므로 효과 큼)
-- `ANTHROPIC_API_KEY` 환경변수
-- 폴백: API 오류 시 기존 키워드 매칭으로 답변
+### 3. 소소한 개선
 
-### 3. 소소한 개선 아이디어
-
-- 답변 못 찾은 질문을 로그 파일로 남겨 운영진이 FAQ 보강에 활용
-- 슬래시 커맨드(`/질문`)로 전환 (discord.py app_commands)
-- 특정 채널(#질문)에서만 반응하도록 제한 옵션
+- 특정 채널에서만 반응하도록 제한 옵션
+- `unanswered.log`를 주기적으로 요약해 운영진에게 DM
+- 답변에 "도움이 됐나요?" 반응 버튼 → 품질 지표 수집
 
 ## 주의사항
 
-- `DISCORD_TOKEN`, `NOTION_TOKEN`, `ANTHROPIC_API_KEY`는 절대 커밋하지 말 것
-  (`.env` + python-dotenv 도입 권장, `.gitignore`에 `.env` 추가)
-- `faq_engine.py`는 discord 의존성이 없게 유지할 것 (테스트 용이성)
-- 답변 엔진 교체 시에도 `!주제`, `!리로드` 명령은 유지
+- `DISCORD_TOKEN`, `ANTHROPIC_API_KEY`는 절대 커밋 금지.
+  `.env`는 `.gitignore`에 있고, `.env.example`은 값이 빈 채로 커밋한다
+- `stats.log` / `unanswered.log`도 커밋 금지 (학생 질문 본문·사용자 ID 포함)
+- `faq_engine.py`, `hours.py`, `stats_engine.py`, `claude_engine.py`는
+  **discord 의존성이 없게 유지할 것** (단독 테스트 가능해야 함)
+- 답변 엔진을 교체해도 `/해커톤주제`, `!리로드` 명령은 유지
+- 줄바꿈은 LF로 통일한다 (`.gitattributes`). 윈도우에서 CRLF로 저장되면
+  git diff가 전체 파일 변경으로 잡히고, 리눅스에서 셸 스크립트가 실행되지 않는다
+- 디스코드 메시지는 2000자 제한. `bot.clip()`으로 자르고 있으니 새 응답 경로를
+  추가할 때도 통과시킬 것

@@ -7,9 +7,33 @@ stats_cli.py에서도 그대로 재사용할 수 있다 (단독 테스트도 가
 """
 
 import datetime
+from zoneinfo import ZoneInfo
 
-MISS_LOG_FILE = "unanswered.log"  # 키워드로 못 잡은 질문 기록 (운영진 FAQ 보강용)
-STATS_LOG_FILE = "stats.log"  # 모든 질문 사용 기록 (통계용: 사용자ID + 결과만, 질문 본문 없음)
+from paths import MISS_LOG_FILE, STATS_LOG_FILE, ensure_data_dir
+
+# 로그 시각은 항상 한국시간으로 남긴다.
+# 서버(오라클 등)의 시스템 시간대는 보통 UTC라, 그냥 datetime.now()를 쓰면
+# 로그가 9시간 어긋나서 "새벽 3시에 질문이 몰렸다" 같은 엉뚱한 해석을 하게 된다.
+KST = ZoneInfo("Asia/Seoul")
+
+
+def _now() -> str:
+    """로그에 찍을 현재 시각(한국시간) 문자열."""
+    return datetime.datetime.now(KST).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _append(path, line: str, label: str) -> None:
+    """로그 한 줄을 파일에 덧붙인다. 실패해도 예외를 밖으로 던지지 않는다.
+
+    로그를 못 남기는 건 아쉬운 일이지만, 그것 때문에 학생 질문에 대한 답변이
+    실패하면 안 된다. 그래서 여기서 삼키고 콘솔에만 경고를 찍는다.
+    """
+    try:
+        ensure_data_dir()
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(line)
+    except Exception as e:
+        print(f"⚠️ {label} 실패: {e}")
 
 
 def log_miss(question: str, handled_by: str) -> None:
@@ -18,13 +42,9 @@ def log_miss(question: str, handled_by: str) -> None:
     handled_by: 'claude'(Claude가 대신 답함) 또는 'nomatch'(아무도 못 답함).
     운영진은 이 로그를 보고 자주 나오는 표현을 faq.md 키워드에 추가하면 된다.
     """
-    ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    line = f"{ts}\t[{handled_by}]\t{question}\n"
-    try:
-        with open(MISS_LOG_FILE, "a", encoding="utf-8") as f:
-            f.write(line)
-    except Exception as e:
-        print(f"⚠️ 로그 기록 실패: {e}")
+    # 질문에 줄바꿈/탭이 들어오면 로그 한 줄이 깨지므로 공백으로 바꿔서 저장한다.
+    safe = " ".join(question.split())
+    _append(MISS_LOG_FILE, f"{_now()}\t[{handled_by}]\t{safe}\n", "로그 기록")
 
 
 def log_usage(user_id: int, category: str) -> None:
@@ -32,13 +52,7 @@ def log_usage(user_id: int, category: str) -> None:
 
     category: 'hit:<주제명>'(키워드 매칭 성공) / 'claude'(LLM이 답함) / 'nomatch'(둘 다 실패)
     """
-    ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    line = f"{ts}\t{user_id}\t{category}\n"
-    try:
-        with open(STATS_LOG_FILE, "a", encoding="utf-8") as f:
-            f.write(line)
-    except Exception as e:
-        print(f"⚠️ 통계 기록 실패: {e}")
+    _append(STATS_LOG_FILE, f"{_now()}\t{user_id}\t{category}\n", "통계 기록")
 
 
 def collect_stats() -> dict:
@@ -52,11 +66,13 @@ def collect_stats() -> dict:
     users = set()
     topic_counts: dict[str, int] = {}
     hit = claude = nomatch = 0
+    total = 0  # 형식이 올바른 줄만 센다 (아래 주석 참고)
 
     for line in lines:
         parts = line.rstrip("\n").split("\t")
         if len(parts) != 3:
             continue
+        total += 1
         _, user_id, category = parts
         users.add(user_id)
         if category.startswith("hit:"):
@@ -70,8 +86,11 @@ def collect_stats() -> dict:
 
     top_topics = sorted(topic_counts.items(), key=lambda x: -x[1])[:5]
 
+    # total을 len(lines)로 세면 빈 줄이나 깨진 줄까지 질문 수에 포함돼서
+    # 아래 hit/claude/nomatch의 합과 숫자가 안 맞는다(운영진이 보면 혼란).
+    # 위에서 유효한 줄만 센 total을 쓴다.
     return {
-        "total": len(lines),
+        "total": total,
         "unique_users": len(users),
         "hit": hit,
         "claude": claude,

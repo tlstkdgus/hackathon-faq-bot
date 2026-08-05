@@ -1,4 +1,12 @@
+# 필요한 파이썬 패키지 목록
+# 설치: python -m pip install -r requirements.txt
+#
+# ⚠️ 파이썬 3.10 이상이 필요합니다 (bot.py 시작 시 자동으로 확인합니다).
+
 discord.py>=2.3
 python-dotenv>=1.0
 anthropic>=0.117
+
+# 윈도우에는 시간대 데이터베이스가 없어서 ZoneInfo("Asia/Seoul")이 실패한다.
+# 리눅스 서버에서는 보통 필요 없지만, 설치돼 있어도 무해하므로 그냥 둔다.
 tzdata>=2024.1

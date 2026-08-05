@@ -1,0 +1,26 @@
+# 줄바꿈 문자를 저장소 안에서 LF로 통일한다.
+#
+# 왜 필요한가:
+#   윈도우에서 편집하면 파일이 CRLF(\r\n)로 저장되는데, 저장소에는 LF(\n)로
+#   들어가 있다. 이 설정이 없으면 내용을 한 글자도 안 바꿔도 git이 "파일 전체가
+#   바뀜"으로 인식해서, 커밋 diff가 1200줄짜리 쓰레기가 된다.
+#   또 리눅스 서버(오라클)에 배포할 때 셸 스크립트에 CRLF가 섞이면
+#   "bad interpreter: /bin/bash^M" 오류로 실행이 안 된다.
+#
+# 아래 설정을 넣으면 체크아웃 시점에도 LF로 유지되므로 윈도우/리눅스 어디서
+# 작업하든 diff가 깨끗하다.
+
+* text=auto eol=lf
+
+# 확실히 못 박아두는 것들
+*.py    text eol=lf
+*.md    text eol=lf
+*.txt   text eol=lf
+*.sh    text eol=lf
+*.service text eol=lf
+.env.example text eol=lf
+
+# 바이너리는 손대지 않는다
+*.png binary
+*.jpg binary
+*.ico binary

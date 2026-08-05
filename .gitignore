@@ -1,6 +1,14 @@
-# 환경변수 / 토큰
+# 주의: .gitignore는 줄 끝 주석(#)을 지원하지 않는다.
+# 주석은 반드시 줄 맨 앞에서 시작해야 한다.
+
+# 환경변수 / 토큰 — 절대 커밋 금지
 .env
-.env.example
+.env.local
+
+# 단, 값이 비어 있는 예시 파일은 커밋해야 한다.
+# (예전엔 .gitignore에 .env.example이 그냥 들어 있어서,
+#  예시 파일을 만들어도 git이 무시해 버리는 문제가 있었다.)
+!.env.example
 
 # Python
 __pycache__/
@@ -8,7 +16,7 @@ __pycache__/
 .venv/
 venv/
 
-# 못 찾은 질문 로그 (학생 질문 포함 → 커밋 금지)
+# 못 찾은 질문 로그 (학생 질문 본문 포함 → 커밋 금지)
 unanswered.log
 
 # 사용 통계 로그 (사용자 ID 포함 → 커밋 금지)
@@ -16,3 +24,9 @@ stats.log
 
 # 노션 연동 시 로컬 폴백 캐시 (추후)
 faq_cache.md
+
+# 에디터 / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

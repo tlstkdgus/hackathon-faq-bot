@@ -12,8 +12,13 @@ import os
 
 from anthropic import Anthropic
 
-MODEL = "claude-haiku-4-5"  # FAQ 봇에 적합한 가장 빠르고 저렴한 모델
+MODEL = os.environ.get("ANTHROPIC_MODEL", "claude-haiku-4-5")  # 빠르고 저렴한 기본 모델
 MAX_TOKENS = 1024
+
+# 응답 대기 상한(초). SDK 기본값은 10분이라 그대로 두면 API가 느려질 때
+# 학생이 몇 분씩 로딩 표시를 보게 된다. 짧게 끊고 키워드 매칭으로 폴백하는 편이 낫다.
+TIMEOUT_SECONDS = float(os.environ.get("ANTHROPIC_TIMEOUT", "20"))
+MAX_RETRIES = 1  # 일시적 오류만 한 번 재시도 (총 대기 최악 약 40초)
 
 # 답변 규칙. FAQ 자료 밖의 내용은 지어내지 않도록 강하게 제약한다.
 SYSTEM_RULES = (
@@ -34,7 +39,8 @@ def _get_client() -> Anthropic:
     """Anthropic 클라이언트 (ANTHROPIC_API_KEY 환경변수를 읽음). 최초 1회만 생성."""
     global _client
     if _client is None:
-        _client = Anthropic()  # api_key 미지정 시 환경변수에서 자동으로 읽음
+        # api_key 미지정 시 ANTHROPIC_API_KEY 환경변수에서 자동으로 읽음
+        _client = Anthropic(timeout=TIMEOUT_SECONDS, max_retries=MAX_RETRIES)
     return _client
 
 

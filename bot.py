@@ -2,13 +2,32 @@
 """
 해커톤 FAQ 디스코드 봇
 - faq.md에 있는 키워드/답변으로 학생 질문에 자동 응답
-- 사용법: 봇을 멘션(@봇이름)하고 질문하거나, !질문 <내용>
-- !주제 : 답변 가능한 주제 목록
-- !리로드 : faq.md 수정 후 다시 불러오기 (관리자용)
+- 키워드로 못 잡으면 Claude(LLM)가 FAQ 자료를 근거로 자연어 답변 (선택)
+- 질문/답변은 항상 비공개(ephemeral)로 나가고, 공개 채팅에는 안내만 남긴다
+
+명령어
+- /해커톤질문 <내용> : 질문 (나에게만 보임)
+- /해커톤주제        : 답변 가능한 주제 목록
+- /해커톤도움        : 사용법
+- /해커톤통계        : 사용 통계 (서버 관리자 전용)
+- !리로드            : faq.md 수정 후 다시 불러오기 (서버 관리자 전용)
+
+실행: python bot.py  (서버 배포는 deploy/DEPLOY.md 참고)
 """
 
 import os
+import sys
 import asyncio
+
+# 이 프로젝트는 파이썬 3.10 이상이 필요하다.
+# (hours.py의 `datetime | None` 타입 표기가 3.9에서는 문법 오류로 죽는다.)
+# 서버에서 우분투 20.04 같은 구버전을 골랐을 때 원인 모를 SyntaxError로
+# 헤매지 않도록, 여기서 먼저 사람이 읽을 수 있는 메시지로 알려준다.
+if sys.version_info < (3, 10):
+    raise SystemExit(
+        f"파이썬 3.10 이상이 필요합니다 (현재 {sys.version.split()[0]}).\n"
+        "우분투라면: sudo apt install python3.10  또는 우분투 22.04 이상을 쓰세요."
+    )
 
 import discord
 from discord import app_commands
@@ -25,22 +44,53 @@ from faq_engine import load_faq, find_answer, topic_list
 import llm  # LLM 백엔드 스위치 (claude / openai …) — LLM_PROVIDER 환경변수로 선택
 from stats_engine import log_miss, log_usage, compute_stats
 import hours  # 질문 운영시간 판단 (QA_START_HOUR ~ QA_END_HOUR)
+from paths import FAQ_FILE, DATA_DIR  # 절대경로. 서버(systemd)에서 실행해도 안전하다
 
 TOKEN = os.environ.get("DISCORD_TOKEN")  # 환경변수로 토큰 관리 (README 참고)
 GUILD_ID = os.environ.get("DISCORD_GUILD_ID")  # 설정하면 /질문 슬래시 커맨드가 즉시 반영(선택)
-FAQ_FILE = "faq.md"
+
+# 디스코드 메시지 한 건의 최대 길이. 넘기면 전송 자체가 실패(HTTP 400)하므로
+# 보내기 직전에 잘라준다. faq.md에 운영진이 아주 긴 답변을 넣어도 봇이 죽지 않게 하는 안전장치.
+DISCORD_MAX_LEN = 2000
 
 intents = discord.Intents.default()
 intents.message_content = True  # 개발자 포털에서 MESSAGE CONTENT INTENT 켜야 함
 
 bot = commands.Bot(command_prefix="!", intents=intents, help_command=None)
-faq_entries = load_faq(FAQ_FILE)
+
+
+def _load_entries() -> list:
+    """faq.md를 읽어온다. 파일이 없거나 비어 있으면 눈에 띄게 경고한다.
+
+    예전에는 상대경로를 써서, 실행 위치가 다르면 파일을 못 찾고 조용히
+    0개가 로드된 채로 봇이 떴다. 이제는 경로도 절대경로고, 문제가 있으면
+    로그에 크게 남긴다.
+    """
+    try:
+        entries = load_faq(str(FAQ_FILE))
+    except FileNotFoundError:
+        print(f"❌ FAQ 파일을 찾을 수 없습니다: {FAQ_FILE}")
+        return []
+    if not entries:
+        print(f"⚠️ FAQ 항목이 0개입니다. {FAQ_FILE} 형식을 확인하세요 (## 주제 | 키워드).")
+    return entries
+
+
+faq_entries = _load_entries()
 
 NO_MATCH_MSG = (
     "음… 그 질문에 맞는 답을 못 찾았어요. 😅\n"
-    "`!주제` 를 입력하면 제가 답할 수 있는 주제 목록을 볼 수 있어요.\n"
+    "`/해커톤주제` 를 입력하면 제가 답할 수 있는 주제 목록을 볼 수 있어요.\n"
     "그래도 해결이 안 되면 운영진에게 직접 문의해 주세요!"
 )
+
+
+def clip(text: str, limit: int = DISCORD_MAX_LEN) -> str:
+    """디스코드 길이 제한에 맞게 자른다 (넘칠 때만 동작)."""
+    if len(text) <= limit:
+        return text
+    tail = "\n…(내용이 길어 줄였어요. 자세한 건 운영진에게 문의해 주세요!)"
+    return text[: limit - len(tail)] + tail
 
 
 def build_reply(question: str, user_id: int) -> str:
@@ -55,7 +105,7 @@ def build_reply(question: str, user_id: int) -> str:
     entry = find_answer(question, faq_entries)
     if entry is not None:
         log_usage(user_id, f"hit:{entry.title}")
-        return f"**📌 {entry.title}**\n{entry.answer}"
+        return clip(f"**📌 {entry.title}**\n{entry.answer}")
 
     # 키워드로 못 찾음 → LLM에게 넘김 (자연어로 이해 시도)
     handled_by = "nomatch"
@@ -70,7 +120,7 @@ def build_reply(question: str, user_id: int) -> str:
 
     log_miss(question, handled_by)
     log_usage(user_id, handled_by)
-    return reply
+    return clip(reply)
 
 
 @bot.event
@@ -89,21 +139,25 @@ async def on_ready():
     except Exception as e:
         print(f"⚠️ 슬래시 커맨드 동기화 실패: {e}")
     print(f"✅ 로그인 성공: {bot.user} (FAQ {len(faq_entries)}개 로드, 답변 모드: {mode})")
-    print(f"   질문 운영시간: 매일 {hours.QA_START_HOUR}:00~{hours.QA_END_HOUR}:00 (KST)")
+    print(f"   질문 운영시간: 매일 {hours.describe()} (KST)")
+    print(f"   FAQ 파일: {FAQ_FILE}")
+    print(f"   로그 폴더: {DATA_DIR}")
+    if not faq_entries:
+        print("❗ FAQ가 0개라 지금은 어떤 질문에도 답할 수 없습니다. faq.md를 확인하세요.")
 
 
 NUDGE_MSG = "🔒 질문은 **`/해커톤질문`** 으로 해주세요! 그래야 질문과 답변이 **나에게만** 보여요."
 
 CLOSED_MSG = (
     f"🌙 지금은 질문 운영시간이 아니에요.\n"
-    f"매일 **{hours.QA_START_HOUR}:00 ~ {hours.QA_END_HOUR}:00** 에만 답변드리고 있어요. "
+    f"매일 **{hours.describe()}** 에만 답변드리고 있어요. "
     "운영시간에 다시 물어봐 주세요!"
 )
 
 USAGE_MSG = (
     "**질문하는 방법** 🦁\n"
     "🔒 **`/해커톤질문 <내용>`** — 질문·답변이 **나에게만** 보여요 (남들에게 안 보임)\n"
-    f"   (운영시간: 매일 {hours.QA_START_HOUR}:00~{hours.QA_END_HOUR}:00)\n"
+    f"   (운영시간: 매일 {hours.describe()})\n"
     "· **`/해커톤주제`** — 제가 답할 수 있는 주제 목록, 카테고리별로 정리해서 보여드려요 (나에게만 보임)\n"
     "· **`/해커톤도움`** — 이 사용법 안내\n"
     "· **`/해커톤통계`** — (운영진 전용) 사용 통계"
@@ -133,15 +187,29 @@ async def slash_ask(interaction: discord.Interaction, 내용: str):
     # build_reply 내부의 Claude 호출(anthropic SDK)이 동기(blocking) 함수라
     # 그대로 부르면 응답을 기다리는 동안 봇 전체(다른 학생들 요청 포함)가 멈춘다.
     # 별도 스레드에서 돌려서 이벤트 루프가 다른 사람 요청을 계속 처리하게 한다.
-    reply = await asyncio.to_thread(build_reply, 내용, interaction.user.id)
+    #
+    # defer()를 이미 불렀기 때문에, 여기서 예외가 나면 학생 화면에는
+    # "애플리케이션이 응답하지 않습니다"만 남고 아무 안내도 못 받는다.
+    # 그래서 무슨 일이 생기든 반드시 followup을 하나는 보내도록 감싼다.
+    try:
+        reply = await asyncio.to_thread(build_reply, 내용, interaction.user.id)
+    except Exception as e:
+        print(f"⚠️ 답변 생성 중 오류: {e}")
+        reply = "앗, 답변을 만드는 중에 문제가 생겼어요. 😢 잠시 후 다시 시도해 주세요."
     await interaction.followup.send(reply, ephemeral=True)
 
 
 @bot.tree.command(name="해커톤주제", description="제가 답할 수 있는 주제 목록을 나에게만 보여줘요")
 async def slash_topics(interaction: discord.Interaction):
     """/해커톤주제 — 답변 가능한 주제 목록 (본인에게만 보임)."""
+    if not faq_entries:
+        await interaction.response.send_message(
+            "아직 등록된 주제가 없어요. 운영진에게 알려주세요!", ephemeral=True
+        )
+        return
+    # 주제가 많아지면 2000자를 넘길 수 있으므로 잘라서 보낸다.
     await interaction.response.send_message(
-        f"**제가 답할 수 있는 주제예요!**\n{topic_list(faq_entries)}", ephemeral=True
+        clip(f"**제가 답할 수 있는 주제예요!**\n{topic_list(faq_entries)}"), ephemeral=True
     )
 
 
@@ -168,7 +236,16 @@ async def slash_stats(interaction: discord.Interaction):
 async def reload_faq(ctx: commands.Context):
     """!리로드 — faq.md를 다시 불러오기 (서버 관리 권한 필요)"""
     global faq_entries
-    faq_entries = load_faq(FAQ_FILE)
+    entries = _load_entries()
+    if not entries:
+        # 실수로 faq.md를 깨뜨렸을 때, 기존에 잘 돌던 FAQ까지 날려버리면 안 된다.
+        # 새로 읽은 결과가 0개면 이전 내용을 그대로 유지하고 경고만 한다.
+        await ctx.reply(
+            f"⚠️ faq.md에서 주제를 하나도 못 읽었어요. 형식을 확인해 주세요.\n"
+            f"(기존 {len(faq_entries)}개 주제는 그대로 유지했어요.)"
+        )
+        return
+    faq_entries = entries
     await ctx.reply(f"🔄 FAQ를 다시 불러왔어요! (총 {len(faq_entries)}개 주제)")
 
 
@@ -188,6 +265,21 @@ async def on_command_error(ctx: commands.Context, error):
 if __name__ == "__main__":
     if not TOKEN:
         raise SystemExit(
-            "DISCORD_TOKEN 환경변수가 없습니다. README.md의 '토큰 설정' 부분을 참고하세요."
+            "DISCORD_TOKEN 환경변수가 없습니다. README.md의 '토큰 설정' 부분을 참고하세요.\n"
+            "(서버라면 /etc/faq-bot.env 또는 프로젝트 폴더의 .env 파일을 확인하세요.)"
         )
-    bot.run(TOKEN)
+    try:
+        # log_handler=None: discord.py가 자체 로그 설정을 하지 않게 두면
+        # print 출력이 그대로 systemd 저널(journalctl)에 남아 보기 편하다.
+        bot.run(TOKEN, log_handler=None)
+    except discord.LoginFailure:
+        raise SystemExit(
+            "❌ 디스코드 로그인 실패: DISCORD_TOKEN이 잘못됐습니다.\n"
+            "   디스코드 개발자 포털 → Bot → Reset Token 으로 새 토큰을 발급받아 넣으세요."
+        )
+    except discord.PrivilegedIntentsRequired:
+        raise SystemExit(
+            "❌ MESSAGE CONTENT INTENT가 꺼져 있습니다.\n"
+            "   개발자 포털 → Bot → Privileged Gateway Intents →\n"
+            "   'MESSAGE CONTENT INTENT'를 켜고 저장한 뒤 다시 실행하세요."
+        )

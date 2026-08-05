@@ -16,8 +16,9 @@ Python 3.10+ / discord.py 2.3+. 키워드 매칭 → Claude 폴백의 2단 구�
 |---|---|
 | `bot.py` | 봇 본체. 슬래시 커맨드 4개 + `!리로드` 처리 |
 | `faq_engine.py` | `faq.md` 파싱 + 키워드 매칭 (discord 의존성 없음) |
-| `claude_engine.py` | Claude Haiku 자연어 답변 (discord 의존성 없음) |
-| `llm.py` | LLM 백엔드 스위치 (`LLM_PROVIDER`). 현재 claude만 구현 |
+| `claude_engine.py` | Claude 자연어 답변 (discord 의존성 없음) |
+| `openai_engine.py` | OpenAI 자연어 답변 (claude_engine과 동일 인터페이스) |
+| `llm.py` | LLM 백엔드 스위치 + 폴백 체인 (`LLM_PROVIDER` / `LLM_FALLBACK`) |
 | `stats_engine.py` | 질문 로그 기록/집계 (discord 의존성 없음) |
 | `stats_cli.py` | 터미널에서 통계 확인 |
 | `hours.py` | 질문 운영시간 판단 (discord 의존성 없음) |
@@ -35,8 +36,12 @@ Python 3.10+ / discord.py 2.3+. 키워드 매칭 → Claude 폴백의 2단 구�
   `FUZZY_THRESHOLD=0.82`로 오타/변형도 일부 잡음
 - **`bot.build_reply()`가 응답 생성의 단일 진입점.** 답변 엔진을 바꿀 땐 이 함수만
   교체하면 된다 (의도된 설계)
-- `llm.py` 스위치 구조 — `openai_engine.py`를 같은 인터페이스로 만들고
-  `LLM_PROVIDER=openai`만 넣으면 나머지 코드는 안 건드려도 됨
+- `llm.py`는 스위치 + 폴백 체인. `LLM_PROVIDER` 실패 시 `LLM_FALLBACK`으로 넘김.
+  두 엔진 모듈은 지연 import라 한쪽 패키지가 없어도 동작한다.
+  `llm.last_used`에 **실제로 답한** 백엔드가 담기므로 통계는 이걸 기록해야 한다
+  (`llm.PROVIDER`는 설정값일 뿐이라 폴백 시 틀린 값이 된다)
+- OpenAI 모델명은 라인업이 자주 바뀐다. 코드에 못박지 말고 `OPENAI_MODEL`로 두고,
+  모델명 오류 시 `models.list()`로 사용 가능 목록을 로그에 찍는다
 - 질문/답변은 **항상 ephemeral**(본인에게만 보임). 공개 채팅 멘션·`!명령`에는
   안내 메시지(`NUDGE_MSG`)만 나감
 - Claude 호출은 동기 함수라 `asyncio.to_thread`로 감싼다.

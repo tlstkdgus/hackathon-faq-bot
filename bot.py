@@ -114,9 +114,11 @@ def build_reply(question: str, user_id: int) -> str:
         try:
             answer = llm.answer(question, faq_entries)
             if answer:
-                reply, handled_by = answer, llm.PROVIDER
+                # llm.last_used = 실제로 답을 만든 백엔드 이름.
+                # 폴백이 동작했을 수 있으므로 PROVIDER(설정값)가 아니라 이걸 기록한다.
+                reply, handled_by = answer, llm.last_used
         except Exception as e:
-            print(f"⚠️ LLM({llm.PROVIDER}) 오류: {e}")
+            print(f"⚠️ LLM 답변 실패(모든 백엔드): {e}")
 
     log_miss(question, handled_by)
     log_usage(user_id, handled_by)
@@ -125,7 +127,7 @@ def build_reply(question: str, user_id: int) -> str:
 
 @bot.event
 async def on_ready():
-    mode = f"키워드 + {llm.PROVIDER} 폴백" if llm.is_enabled() else "키워드 전용"
+    mode = f"키워드 + {llm.describe()}" if llm.is_enabled() else "키워드 전용"
     # 슬래시 커맨드(/질문) 동기화. GUILD_ID가 있으면 해당 서버에 즉시 반영,
     # 없으면 전역 동기화(디스코드 반영에 최대 1시간 걸릴 수 있음).
     try:

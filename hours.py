@@ -40,8 +40,12 @@ def _read_hour(name: str, default: int) -> int:
     return value
 
 
-QA_START_HOUR = _read_hour("QA_START_HOUR", 10)
-QA_END_HOUR = _read_hour("QA_END_HOUR", 17)
+# 기본값은 24시간 개방(0~24).
+# 해커톤은 밤샘이 기본이고 질문이 몰리는 시간대가 오히려 새벽이다.
+# 봇은 사람과 달리 밤에 답한다고 지치지 않으므로 열어두는 쪽이 합리적이다.
+# 낮에만 받고 싶으면 .env에서 QA_START_HOUR=10, QA_END_HOUR=17 처럼 지정하면 된다.
+QA_START_HOUR = _read_hour("QA_START_HOUR", 0)
+QA_END_HOUR = _read_hour("QA_END_HOUR", 24)
 
 
 def is_operating_hours(now: datetime.datetime | None = None) -> bool:

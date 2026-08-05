@@ -11,8 +11,9 @@
 | `bot.py` | 봇 본체 (실행 파일) |
 | `faq_engine.py` | `faq.md`를 읽고 키워드 매칭하는 로직 (discord 의존성 없음) |
 | `faq.md` | **질문/답변 데이터 — 여러분이 수정할 파일!** |
-| `claude_engine.py` | Claude Haiku로 자연어 답변 생성 (키워드 매칭 실패 시 폴백) |
-| `llm.py` | 어떤 LLM을 쓸지 고르는 스위치 (`LLM_PROVIDER` 환경변수, 현재 claude만 구현) |
+| `claude_engine.py` | Claude로 자연어 답변 생성 (키워드 매칭 실패 시 폴백) |
+| `openai_engine.py` | OpenAI로 자연어 답변 생성 (claude_engine과 동일 인터페이스) |
+| `llm.py` | 어떤 LLM을 쓸지 고르는 스위치 + 백엔드 간 자동 폴백 |
 | `stats_engine.py` | 질문 사용 기록/집계 로직 (discord 의존성 없음) |
 | `stats_cli.py` | 터미널에서 바로 통계 확인 (`python stats_cli.py`) |
 | `hours.py` | 질문 운영시간 판단 로직 (discord 의존성 없음) |
@@ -59,11 +60,14 @@ python bot.py
 |---|---|---|
 | `DISCORD_TOKEN` | ✅ | 1번에서 발급받은 봇 토큰 |
 | `DISCORD_GUILD_ID` | 권장 | 서버 ID. 설정하면 슬래시 커맨드가 **즉시** 반영됨 (안 하면 최대 1시간). 디스코드 설정 → 고급 → 개발자 모드 켠 뒤 서버 아이콘 우클릭 → ID 복사 |
-| `ANTHROPIC_API_KEY` | 선택 | Claude 자연어 폴백을 쓰려면 필요 ([console.anthropic.com](https://console.anthropic.com) → API Keys). 비워두면 키워드 매칭만 동작 |
-| `LLM_PROVIDER` | 선택 | 기본 `claude`. 지금은 claude만 구현됨 |
+| `OPENAI_API_KEY` | 선택 | OpenAI 자연어 답변용 ([platform.openai.com](https://platform.openai.com/api-keys)) |
+| `ANTHROPIC_API_KEY` | 선택 | Claude 자연어 답변용 ([console.anthropic.com](https://console.anthropic.com) → API Keys) |
+| `LLM_PROVIDER` | 선택 | 주 백엔드 `openai` 또는 `claude`. 기본 `claude` |
+| `LLM_FALLBACK` | 선택 | 주 백엔드 실패 시 넘어갈 백엔드. 비우면 폴백 안 함 |
+| `OPENAI_MODEL` | 선택 | 기본 `gpt-5-mini`. 라인업이 자주 바뀌니 [모델 목록](https://platform.openai.com/docs/models) 확인 |
 | `ANTHROPIC_MODEL` | 선택 | 기본 `claude-haiku-4-5` |
-| `ANTHROPIC_TIMEOUT` | 선택 | Claude 응답 대기 상한(초). 기본 `20`. 넘기면 안내 메시지로 폴백 |
-| `QA_START_HOUR` / `QA_END_HOUR` | 선택 | 질문 답변 운영시간 (한국시간, 24시간제). 기본 `10`~`17`. 하루 종일 받으려면 `0`과 `24`, **밤샘 해커톤이면 `20`과 `4`처럼 자정을 넘겨도 됩니다** |
+| `OPENAI_TIMEOUT` / `ANTHROPIC_TIMEOUT` | 선택 | 응답 대기 상한(초). 기본 `20` |
+| `QA_START_HOUR` / `QA_END_HOUR` | 선택 | 질문 답변 운영시간 (한국시간, 24시간제). **기본 `0`~`24`(24시간 개방)**. 낮에만 받으려면 `10`과 `17`, **자정을 넘기는 `20`~`4`도 지원합니다** |
 | `DATA_DIR` | 선택 | 로그 파일을 저장할 폴더. 비워두면 프로젝트 폴더에 쌓임 |
 
 ⚠️ `.env` 파일은 `.gitignore`에 포함되어 있어 git에 커밋되지 않습니다. 그래도 실수로 `git add .env`를 하지 않도록 주의하세요.
@@ -171,9 +175,28 @@ python bot.py
 - `faq.md` 전체를 컨텍스트로 넣고 프롬프트 캐싱을 적용해 비용을 더 아낍니다.
 - Claude API 오류가 나도 봇은 죽지 않고 조용히 안내 메시지로 넘어갑니다.
 
-## 나중에 다른 LLM(OpenAI 등)으로 바꾸고 싶다면
+## LLM 백엔드 전환과 자동 폴백
 
-`llm.py`가 이미 스위치 구조로 되어 있습니다. `claude_engine.py`와 같은 인터페이스
-(`is_enabled()`, `answer(question, entries)`)로 `openai_engine.py`를 만들고
-`.env`에 `LLM_PROVIDER=openai`만 넣으면 됩니다. `bot.py`, `faq_engine.py` 등
-나머지 코드는 손댈 필요가 없습니다.
+OpenAI와 Claude를 모두 지원합니다. `.env` 두 줄로 결정됩니다.
+
+```
+LLM_PROVIDER=openai    # 주 백엔드
+LLM_FALLBACK=claude    # 주 백엔드가 실패하면 여기로
+```
+
+**폴백을 권장하는 이유**: 행사 당일 한쪽 API에 장애가 나거나, 레이트리밋에
+걸리거나, 크레딧이 떨어지면 답변이 멈춥니다. 폴백을 걸어두면 자동으로 다른
+백엔드가 이어받습니다. 둘 다 실패해도 봇은 죽지 않고 안내 메시지로 마무리합니다.
+
+시작 로그에 현재 구성이 표시됩니다:
+
+```
+✅ 로그인 성공: ... (FAQ 52개 로드, 답변 모드: 키워드 + openai (실패 시 claude 폴백))
+```
+
+통계(`/해커톤통계`)에는 **실제로 답한** 백엔드가 기록되므로, 폴백이 얼마나
+동작했는지도 나중에 확인할 수 있습니다.
+
+**또 다른 LLM을 붙이려면** `claude_engine.py`와 같은 인터페이스
+(`is_enabled()`, `answer(question, entries)`)로 모듈을 만들고 `llm.py`의
+`_load()`에 한 줄 추가하면 됩니다. `bot.py`, `faq_engine.py`는 손댈 필요 없습니다.

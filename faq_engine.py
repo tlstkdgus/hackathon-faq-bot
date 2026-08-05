@@ -130,13 +130,30 @@ def score_entry(question: str, entry: "FaqEntry") -> float:
     길이로 가중하므로 '와이파이'(4자) 같은 구체적 키워드가 '팀'(1자) 같은
     짧은 키워드보다 크게 기여한다.
     """
+    return _score_detail(question, entry)[0]
+
+
+def _score_detail(question: str, entry: "FaqEntry"):
+    """(총점, 맞은 키워드 수, 가장 긴 키워드 길이)를 함께 돌려준다.
+
+    총점만으로는 동점이 자주 나기 때문에 순위를 가를 보조 지표가 필요하다.
+    - 맞은 키워드 수: 여러 키워드가 걸린 쪽이 그 주제일 가능성이 높다
+      (예: "시연 영상 몇분" → '시연영상'과 '영상' 둘 다 걸리는 항목)
+    - 가장 긴 키워드: 긴 키워드일수록 그 주제에만 쓰이는 구체적인 표현이다
+      (예: '아무거나'보다 '부스벽사이즈'가 훨씬 변별력 있다)
+    """
     q = _normalize(question)
     total = 0.0
+    matched = 0
+    longest = 0
     for k in entry.keywords:
         k_norm = _normalize(k)
         ratio = _keyword_match_ratio(k_norm, q)
+        if ratio > 0:
+            matched += 1
+            longest = max(longest, len(k_norm))
         total += ratio * len(k_norm)
-    return total
+    return total, matched, longest
 
 
 def find_answer(question: str, entries: list, min_score: float = MIN_SCORE):
@@ -145,12 +162,29 @@ def find_answer(question: str, entries: list, min_score: float = MIN_SCORE):
     None을 돌려주면 bot.py가 Claude 폴백(있을 경우)으로 넘긴다.
     min_score를 낮추면 더 관대하게(오답 위험 ↑), 높이면 더 엄격하게(Claude 호출 ↑) 동작.
     """
-    best, best_score = None, 0.0
-    for e in entries:
-        s = score_entry(question, e)
-        if s > best_score:
-            best, best_score = e, s
-    return best if best_score >= min_score else None
+    # 점수가 높은 순으로 정렬. 총점이 같으면 (맞은 키워드 수 → 가장 긴 키워드) 순으로
+    # 순위를 가른다. 마지막에 제목을 넣는 이유는 완전 동점일 때도 결과가 항상
+    # 같도록 만들기 위해서다. 예전에는 동점이면 faq.md에서 먼저 나온 항목이
+    # 이겼는데, 그러면 항목 순서만 바꿔도 답이 조용히 달라져서 위험했다.
+    ranked = sorted(
+        ((_score_detail(question, e), e) for e in entries),
+        key=lambda x: (x[0][0], x[0][1], x[0][2], x[1].title),
+        reverse=True,
+    )
+    if not ranked:
+        return None
+
+    (top_score, top_matched, top_longest), best = ranked[0]
+    if top_score < min_score:
+        return None
+
+    # 1·2위가 모든 지표에서 완전히 같다면 키워드만으로는 판단할 수 없는 질문이다.
+    # 둘 중 하나를 임의로 고르면 절반은 틀린 답이 나가므로, 차라리 None을 돌려
+    # LLM에게 넘긴다. LLM은 FAQ 전체를 보고 판단하니 훨씬 나은 선택을 한다.
+    if len(ranked) > 1 and ranked[1][0] == (top_score, top_matched, top_longest):
+        return None
+
+    return best
 
 
 def topic_list(entries: list) -> str:

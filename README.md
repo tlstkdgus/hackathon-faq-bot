@@ -64,7 +64,8 @@ python bot.py
 | `ANTHROPIC_API_KEY` | 선택 | Claude 자연어 답변용 ([console.anthropic.com](https://console.anthropic.com) → API Keys) |
 | `LLM_PROVIDER` | 선택 | 주 백엔드 `openai` 또는 `claude`. 기본 `claude` |
 | `LLM_FALLBACK` | 선택 | 주 백엔드 실패 시 넘어갈 백엔드. 비우면 폴백 안 함 |
-| `OPENAI_MODEL` | 선택 | 기본 `gpt-5-mini`. 라인업이 자주 바뀌니 [모델 목록](https://platform.openai.com/docs/models) 확인 |
+| `OPENAI_MODEL` | 선택 | 기본 `gpt-5.6-luna` (비용 최적화 모델). [모델 목록](https://platform.openai.com/docs/models) |
+| `OPENAI_REASONING` | 선택 | 추론 강도. 기본 `none` — FAQ 답변엔 추론이 불필요하고, 켜면 비용·지연만 늘어남 |
 | `ANTHROPIC_MODEL` | 선택 | 기본 `claude-haiku-4-5` |
 | `OPENAI_TIMEOUT` / `ANTHROPIC_TIMEOUT` | 선택 | 응답 대기 상한(초). 기본 `20` |
 | `QA_START_HOUR` / `QA_END_HOUR` | 선택 | 질문 답변 운영시간 (한국시간, 24시간제). **기본 `0`~`24`(24시간 개방)**. 낮에만 받으려면 `10`과 `17`, **자정을 넘기는 `20`~`4`도 지원합니다** |

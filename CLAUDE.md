@@ -24,6 +24,7 @@ Python 3.10+ / discord.py 2.3+. 키워드 매칭 → Claude 폴백의 2단 구�
 | `stats_cli.py` | 터미널에서 통계 확인 |
 | `hours.py` | 질문 운영시간 판단 (discord 의존성 없음) |
 | `paths.py` | 파일 경로 중앙 관리 (절대경로) |
+| `test_llm_interface.py` | LLM 백엔드 인터페이스 회귀 테스트 (의존성 0, `python`으로 바로 실행) |
 | `faq.md` | FAQ 데이터. 현재 9개 카테고리 / 65개 항목 |
 | `deploy/` | 오라클 서버 배포 세트 (systemd, setup.sh, update.sh, DEPLOY.md) |
 
@@ -100,10 +101,18 @@ Python 3.10+ / discord.py 2.3+. 키워드 매칭 → Claude 폴백의 2단 구�
   - 노션 API 장애 시 마지막 성공본을 `faq_cache.md`로 폴백
 - 페이지 ID는 `NOTION_PAGE_ID` 환경변수로
 
-### 2. 테스트 추가
+### 2. 테스트 추가 (일부 완료)
 
-`faq_engine` / `hours` / `stats_engine`은 discord 의존성이 없어 단독 테스트가 쉽다.
-pytest로 매칭 정확도 회귀 테스트를 짜두면 키워드를 늘릴 때 안심할 수 있다.
+`test_llm_interface.py` 있음 — 백엔드 `answer()` 이름 규칙, 폴백 체인 순서,
+공용 프롬프트 공유, 순환 참조를 확인한다. `python test_llm_interface.py`로
+그냥 돌아가고(외부 패키지 0), pytest가 있으면 그것으로도 돌아간다.
+
+**anthropic/openai가 없는 환경에서는 엔진 검사를 건너뛴다**(지연 import 설계를
+깨지 않으려고). 건너뛴 분기는 조용히 통과하므로, 그 경로를 손댈 땐 스텁을
+`PYTHONPATH`에 넣어 실제로 실행해볼 것.
+
+남은 것: `hours` / `stats_engine` / `digest`도 discord 의존성이 없어 같은 방식으로
+테스트를 붙일 수 있다.
 
 ### 3. 소소한 개선
 

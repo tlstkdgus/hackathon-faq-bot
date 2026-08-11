@@ -133,7 +133,7 @@ def build_reply(question: str, user_id: int) -> str:
         except Exception as e:
             print(f"⚠️ LLM 답변 실패(모든 백엔드): {e}")
 
-    log_miss(question, handled_by)
+    log_miss(question, handled_by, user_id)
     log_usage(user_id, handled_by)
     return clip(reply)
 

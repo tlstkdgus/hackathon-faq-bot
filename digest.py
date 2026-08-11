@@ -77,11 +77,22 @@ _VERB_FRAGMENTS = {
 
 
 def _parse_line(line: str):
-    """로그 한 줄 → (시각, 처리주체, 질문). 형식이 깨졌으면 None."""
+    """로그 한 줄 → (시각, 처리주체, 질문). 형식이 깨졌으면 None.
+
+    로그 형식은 두 가지가 섞여 있을 수 있다.
+        3칸(구): 시각 / [처리주체] / 질문
+        4칸(신): 시각 / [처리주체] / 사용자ID / 질문
+    사용자ID가 추가되기 전에 쌓인 줄도 그대로 읽어야 하므로 둘 다 받는다.
+    (여기서 3칸만 고집하면 예전 줄이 통째로 버려져 리포트가 빈 채로 나간다.)
+    리포트는 사용자ID를 쓰지 않으므로 반환값은 예전과 같은 3-튜플로 맞춘다.
+    """
     parts = line.rstrip("\n").split("\t")
-    if len(parts) != 3:
+    if len(parts) == 3:
+        ts_raw, handled, question = parts
+    elif len(parts) == 4:
+        ts_raw, handled, _user_id, question = parts
+    else:
         return None
-    ts_raw, handled, question = parts
     try:
         ts = datetime.datetime.strptime(ts_raw, "%Y-%m-%d %H:%M:%S").replace(tzinfo=KST)
     except ValueError:

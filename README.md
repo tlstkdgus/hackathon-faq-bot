@@ -265,6 +265,16 @@ python digest.py 24
 - **`/해커톤질문`이 자동완성에 안 떠요** → `applications.commands` 스코프로 재초대했는지, `.env`에 `DISCORD_GUILD_ID`를 넣었는지 확인 (안 넣으면 반영에 최대 1시간)
 - **`DISCORD_TOKEN 환경변수가 없습니다`** → 위 3번의 토큰 설정을 다시 확인
 - **`pip install` 이 안 먹혀요 (Windows)** → `pip` 대신 `python -m pip install -r requirements.txt` 사용
+- **`python --version` 이 버전 없이 `Python` 만 찍고 끝나요 (Windows)** → PATH에 잡힌 게 실제 파이썬이 아니라
+  **Microsoft Store 앱 실행 별칭**(`%LOCALAPPDATA%\Microsoft\WindowsApps\python.exe`, 0바이트 스텁)입니다.
+  파이썬이 설치돼 있어도 이렇게 보이니 "설치 안 됨"으로 오해하기 쉬워요.
+  실제 설치 경로는 `where python` 대신 아래로 확인하고, 그 경로를 직접 쓰거나 PATH 앞에 두세요.
+  ```powershell
+  # 설치된 파이썬 목록 (uv·공식 설치본 모두 여기에 등록됩니다)
+  reg query HKCU\SOFTWARE\Python /s /f InstallPath
+  reg query HKLM\SOFTWARE\Python /s /f InstallPath
+  ```
+  설정 → 앱 → **앱 실행 별칭**에서 python.exe 별칭을 끄면 혼동이 사라집니다.
 - **질문을 못 알아들어요** → 해당 주제의 키워드에 그 표현을 추가하고 `!리로드` (또는 `unanswered.log` 확인)
 - **`.env`를 고쳤는데 반영이 안 돼요** → 봇을 재시작해야 합니다. `.env`는 시작할 때 한 번만 읽습니다.
   로컬은 `Ctrl+C` 후 `python bot.py`, 서버는 `sudo systemctl restart faq-bot`

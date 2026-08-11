@@ -227,6 +227,83 @@ tail -50 ~/hackathon-faq-bot/unanswered.log
 
 ---
 
+## 7. GitHub에서 자동 배포 (선택)
+
+`main`에 푸시하면 GitHub Actions가 서버에 접속해 `update.sh`를 대신 돌려줍니다.
+매번 SSH로 들어가 `bash deploy/update.sh`를 치지 않아도 됩니다.
+
+> ⚠️ **자동 배포도 서버 접속을 한 번은 해야 설정됩니다.** GitHub이 서버에
+> 들어가려면 SSH 키가 필요하기 때문입니다. 키를 잃어버렸다면 이 절차를
+> 시작할 수 없습니다.
+
+### 준비물 3가지
+
+| 시크릿 이름 | 값 | 필수 |
+|---|---|---|
+| `ORACLE_HOST` | 인스턴스 공용 IP (예: `152.70.1.2`) | ✅ |
+| `ORACLE_SSH_KEY` | SSH **개인 키 파일 전체 내용** (`-----BEGIN` 줄부터 `-----END` 줄까지) | ✅ |
+| `ORACLE_HOST_KEY` | 서버 호스트 키 (아래 참고) | 권장 |
+| `ORACLE_USER` | 접속 계정. 비우면 `ubuntu` | – |
+
+`ORACLE_HOST_KEY`는 서버가 진짜 그 서버인지 확인하는 값입니다. 안 넣으면
+매번 처음 보는 서버를 그냥 믿고 접속합니다. 로컬에서 아래를 실행해 나온
+줄을 그대로 넣으세요.
+
+```bash
+ssh-keyscan -H <공용IP>
+```
+
+### 등록 방법
+
+GitHub 저장소 → **Settings** → **Secrets and variables** → **Actions** →
+**New repository secret** 에서 위 이름 그대로 하나씩 추가합니다.
+
+개인 키는 파일 내용을 **줄바꿈까지 그대로** 붙여넣어야 합니다. 윈도우 PowerShell에서
+클립보드로 복사하려면:
+
+```powershell
+Get-Content $HOME\.ssh\oracle.key -Raw | Set-Clipboard
+```
+
+### 동작 확인
+
+Actions 탭 → **서버 자동 배포** → **Run workflow** 로 수동 실행해봅니다.
+마지막 스텝 로그에 아래가 보이면 성공입니다.
+
+```
+✅ 로그인 성공: ... (FAQ 65개 로드, ...)
+```
+
+시크릿을 아직 안 넣었다면 워크플로는 **실패하지 않고 조용히 건너뜁니다**
+(안내 메시지만 남음). 진짜 배포 실패와 헷갈리지 않게 하기 위해서입니다.
+
+### 알아둘 것
+
+- **문서만 고친 커밋은 배포되지 않습니다.** `.py`, `faq.md`, `requirements.txt`,
+  `deploy/` 가 바뀌었을 때만 돕니다. README 한 줄 고칠 때마다 봇을
+  재시작할 이유가 없기 때문입니다.
+- **서버에서 `faq.md`를 직접 고쳤다면 자동 배포가 실패합니다.** `update.sh`의
+  `git pull --ff-only`가 로컬 수정과 충돌하기 때문입니다. 서버에서 직접 고치는
+  방식과 자동 배포는 같이 쓰지 마세요. 이미 고쳐놨다면 서버에서
+  `git checkout -- faq.md` 로 되돌린 뒤 배포하세요.
+- 배포가 겹쳐 돌지 않도록 한 번에 하나만 실행됩니다.
+
+### SSH 키를 GitHub에 두는 게 꺼려진다면
+
+서버에서 주기적으로 당겨오는 방식도 있습니다. GitHub에 아무것도 저장하지
+않고 인바운드 포트도 필요 없는 대신, 반영이 몇 분 늦습니다.
+
+```bash
+# 서버에서: 5분마다 새 커밋이 있으면 update.sh 실행
+crontab -e
+```
+
+```
+*/5 * * * * cd ~/hackathon-faq-bot && git fetch -q && [ "$(git rev-parse HEAD)" != "$(git rev-parse @{u})" ] && bash deploy/update.sh >> ~/autodeploy.log 2>&1
+```
+
+---
+
 ## 문제 해결
 
 ### 봇이 안 켜져요

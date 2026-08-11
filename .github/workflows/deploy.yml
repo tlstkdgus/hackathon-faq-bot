@@ -1,0 +1,74 @@
+# main에 푸시되면 오라클 서버에 접속해 deploy/update.sh를 돌린다.
+# 설정 방법(시크릿)은 deploy/DEPLOY.md의 "GitHub에서 자동 배포" 참고.
+name: 서버 자동 배포
+
+on:
+  push:
+    branches: [main]
+    # 문서만 고쳤을 때는 봇을 재시작하지 않는다.
+    # update.sh가 systemctl restart를 하므로 매번 몇 초씩 봇이 끊긴다.
+    paths:
+      - "**.py"
+      - "faq.md"
+      - "requirements.txt"
+      - "deploy/**"
+      - ".github/workflows/deploy.yml"
+  workflow_dispatch: # Actions 탭에서 수동 실행
+
+# 배포가 겹치면 두 개의 systemctl restart가 서로를 밟는다. 한 번에 하나만.
+concurrency:
+  group: deploy-oracle
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: 시크릿이 설정됐는지 확인
+        id: guard
+        env:
+          KEY: ${{ secrets.ORACLE_SSH_KEY }}
+          HOST: ${{ secrets.ORACLE_HOST }}
+        run: |
+          # 시크릿을 아직 안 넣었는데 워크플로가 빨간 X로 실패하면
+          # 진짜 배포 실패와 구분이 안 된다. 조용히 건너뛰고 안내만 남긴다.
+          if [ -z "$KEY" ] || [ -z "$HOST" ]; then
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=배포를 건너뜁니다::ORACLE_SSH_KEY / ORACLE_HOST 시크릿이 아직 없습니다. deploy/DEPLOY.md 참고."
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: SSH 키 준비
+        if: steps.guard.outputs.ready == 'true'
+        env:
+          KEY: ${{ secrets.ORACLE_SSH_KEY }}
+          HOST: ${{ secrets.ORACLE_HOST }}
+          HOST_KEY: ${{ secrets.ORACLE_HOST_KEY }}
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+
+          if [ -n "$HOST_KEY" ]; then
+            # 호스트 키를 고정해두는 쪽이 안전하다 (중간자 공격 방지).
+            printf '%s\n' "$HOST_KEY" > ~/.ssh/known_hosts
+          else
+            # 없으면 매번 새로 받아온다. 편한 대신 첫 접속을 무조건 신뢰하는 방식.
+            ssh-keyscan -H "$HOST" >> ~/.ssh/known_hosts 2>/dev/null
+            echo "::notice title=호스트 키 미고정::ORACLE_HOST_KEY를 넣으면 더 안전합니다."
+          fi
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: update.sh 실행 (git pull → 의존성 → 재시작)
+        if: steps.guard.outputs.ready == 'true'
+        env:
+          HOST: ${{ secrets.ORACLE_HOST }}
+          SSH_USER: ${{ secrets.ORACLE_USER || 'ubuntu' }}
+        run: |
+          # BatchMode=yes: 암호를 물어보며 멈추는 대신 바로 실패하게 한다.
+          # update.sh는 봇이 안 뜨면 journalctl을 찍고 exit 1 하므로,
+          # 배포가 실패하면 이 스텝이 빨갛게 뜨고 로그가 그대로 남는다.
+          ssh -i ~/.ssh/deploy_key -o BatchMode=yes "$SSH_USER@$HOST" \
+            'cd ~/hackathon-faq-bot && bash deploy/update.sh'

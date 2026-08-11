@@ -39,7 +39,7 @@ def _append(path, line: str, label: str) -> None:
 def log_miss(question: str, handled_by: str, user_id: int | None = None) -> None:
     """키워드로 못 잡은 질문을 로그 파일에 남긴다.
 
-    handled_by: 'claude'(Claude가 대신 답함) 또는 'nomatch'(아무도 못 답함).
+    handled_by: 실제로 답한 백엔드 이름('openai'·'claude' 등) 또는 'nomatch'(아무도 못 답함).
     운영진은 이 로그를 보고 자주 나오는 표현을 faq.md 키워드에 추가하면 된다.
 
     user_id를 같은 줄에 함께 남기는 이유: 예전에는 질문 원문(이 파일)과
@@ -58,7 +58,7 @@ def log_miss(question: str, handled_by: str, user_id: int | None = None) -> None
 def log_usage(user_id: int, category: str) -> None:
     """모든 질문을 통계용으로 기록한다 (질문 본문 없이 사용자ID + 결과만 → 가볍고 프라이버시 최소화).
 
-    category: 'hit:<주제명>'(키워드 매칭 성공) / 'claude'(LLM이 답함) / 'nomatch'(둘 다 실패)
+    category: 'hit:<주제명>'(키워드 매칭 성공) / 백엔드 이름('openai'·'claude') / 'nomatch'(둘 다 실패)
     """
     _append(STATS_LOG_FILE, f"{_now()}\t{user_id}\t{category}\n", "통계 기록")
 
@@ -139,7 +139,7 @@ def collect_stats() -> dict:
         elif category == "nomatch":
             nomatch += 1
         else:
-            claude += 1  # llm.PROVIDER 값 (claude, openai 등)
+            claude += 1  # 백엔드 이름이 그대로 들어온다 (openai, claude 등)
 
     top_topics = sorted(topic_counts.items(), key=lambda x: -x[1])[:5]
 

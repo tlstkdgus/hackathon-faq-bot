@@ -24,7 +24,7 @@ Python 3.10+ / discord.py 2.3+. 키워드 매칭 → Claude 폴백의 2단 구�
 | `stats_cli.py` | 터미널에서 통계 확인 |
 | `hours.py` | 질문 운영시간 판단 (discord 의존성 없음) |
 | `paths.py` | 파일 경로 중앙 관리 (절대경로) |
-| `faq.md` | FAQ 데이터. 현재 9개 카테고리 / 65개 항목 |
+| `faq.md` | FAQ 데이터. 현재 9개 카테고리 / 66개 항목 |
 | `deploy/` | 오라클 서버 배포 세트 (systemd, setup.sh, update.sh, DEPLOY.md) |
 
 ### 핵심 설계

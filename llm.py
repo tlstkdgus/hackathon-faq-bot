@@ -27,6 +27,27 @@ FALLBACK = os.environ.get("LLM_FALLBACK", "").strip().lower()
 # 통계 로그(stats.log)에 "무엇이 답했는지" 남기기 위해 bot.py가 읽어간다.
 last_used = PROVIDER
 
+# ── 백엔드 공용 프롬프트 ──────────────────────────────────────
+# 답변 규칙과 자료 조립은 백엔드가 달라도 같아야 한다. 예전에는 두 엔진 파일에
+# 똑같은 내용을 복사해 두었는데, 한쪽만 고치면 백엔드에 따라 답변 톤이 조용히
+# 갈라진다. 어느 쪽이 답했는지는 학생이 알 수 없으니 여기서 한 벌만 둔다.
+
+SYSTEM_RULES = (
+    "너는 해커톤 운영을 돕는 친절한 디스코드 FAQ 봇이야. "
+    "학생들의 질문에 아래에 제공된 '해커톤 FAQ 자료'만 근거로 한국어로 답해줘.\n\n"
+    "규칙:\n"
+    "1. 자료에 있는 내용이면 핵심만 간결하게, 친근한 말투로 답해줘. (이모지 조금은 OK)\n"
+    "2. 자료에 없거나 확실하지 않은 내용은 절대 지어내지 말고, "
+    "'그건 제가 가진 자료엔 없어요. 운영진에게 직접 문의해 주세요!' 라고 안내해줘.\n"
+    "3. 일정·장소·비밀번호 같은 구체적인 정보는 자료에 적힌 값을 그대로 알려줘.\n"
+    "4. 답변은 디스코드 메시지로 나가니 너무 길지 않게 해줘."
+)
+
+
+def build_faq_context(entries) -> str:
+    """FaqEntry 리스트를 하나의 텍스트 자료로 합친다."""
+    return "\n\n".join(f"## {e.title}\n{e.answer}" for e in entries)
+
 
 def _load(name: str):
     """백엔드 모듈을 지연 import한다. 패키지가 없으면 None.
@@ -52,6 +73,14 @@ def _usable(name: str):
         return None
     eng = _load(name)
     if eng is None:
+        return None
+    # answer()가 없는 모듈은 아예 체인에서 뺀다.
+    # 없으면 describe()가 "실패 시 claude 폴백"이라고 안내하면서도 실제로는
+    # 호출 시점에 AttributeError로 죽는다. 실제로 claude_engine이 함수명을
+    # claude_answer로 두는 바람에 폴백이 내내 동작하지 않았는데, 로그에는
+    # 폴백이 걸린 것처럼 표시돼서 눈치채기 어려웠다.
+    if not callable(getattr(eng, "answer", None)):
+        print(f"⚠️ {name} 백엔드에 answer() 함수가 없습니다. 이 백엔드는 건너뜁니다.")
         return None
     try:
         return eng if eng.is_enabled() else None

@@ -15,6 +15,8 @@ import os
 
 from openai import OpenAI
 
+from llm import SYSTEM_RULES, build_faq_context  # 답변 규칙은 백엔드 공용
+
 # 쓸 모델은 환경변수로 바꿀 수 있게 열어둔다.
 #
 # 기본값 gpt-5.6-luna를 고른 이유:
@@ -44,18 +46,6 @@ MAX_TOKENS = 1024
 TIMEOUT_SECONDS = float(os.environ.get("OPENAI_TIMEOUT", "20"))
 MAX_RETRIES = 1
 
-# claude_engine과 동일한 규칙을 쓴다. 두 백엔드의 답변 톤을 맞추기 위함.
-SYSTEM_RULES = (
-    "너는 해커톤 운영을 돕는 친절한 디스코드 FAQ 봇이야. "
-    "학생들의 질문에 아래에 제공된 '해커톤 FAQ 자료'만 근거로 한국어로 답해줘.\n\n"
-    "규칙:\n"
-    "1. 자료에 있는 내용이면 핵심만 간결하게, 친근한 말투로 답해줘. (이모지 조금은 OK)\n"
-    "2. 자료에 없거나 확실하지 않은 내용은 절대 지어내지 말고, "
-    "'그건 제가 가진 자료엔 없어요. 운영진에게 직접 문의해 주세요!' 라고 안내해줘.\n"
-    "3. 일정·장소·비밀번호 같은 구체적인 정보는 자료에 적힌 값을 그대로 알려줘.\n"
-    "4. 답변은 디스코드 메시지로 나가니 너무 길지 않게 해줘."
-)
-
 _client = None
 
 
@@ -70,11 +60,6 @@ def _get_client() -> OpenAI:
 def is_enabled() -> bool:
     """API 키가 설정돼 있어 OpenAI를 쓸 수 있는지."""
     return bool(os.environ.get("OPENAI_API_KEY"))
-
-
-def build_faq_context(entries) -> str:
-    """FaqEntry 리스트를 하나의 텍스트 자료로 합친다."""
-    return "\n\n".join(f"## {e.title}\n{e.answer}" for e in entries)
 
 
 def _hint_available_models() -> str:

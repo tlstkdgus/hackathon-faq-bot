@@ -5,12 +5,16 @@ claude_engine.py — Claude Haiku로 FAQ 자료를 근거로 자연어 답변을
 - faq.md 전체를 컨텍스트로 넣고, 자료에 있는 내용만 답하도록 시스템 프롬프트로 제한.
 - 자료에 없으면 "모른다 + 운영진 문의"로 답하게 함 (엉뚱한 답 방지).
 - discord 의존성 없음 → 단독 테스트 가능.
-- API 키(ANTHROPIC_API_KEY)가 없거나 오류가 나면 bot.py 쪽에서 키워드 매칭으로 폴백.
+- API 키(ANTHROPIC_API_KEY)가 없거나 오류가 나면 llm.py가 다른 백엔드나
+  키워드 매칭으로 폴백한다.
+- llm.py가 백엔드를 구분하지 않고 `answer()`를 부르므로 함수명을 바꾸지 말 것.
 """
 
 import os
 
 from anthropic import Anthropic
+
+from llm import SYSTEM_RULES, build_faq_context  # 답변 규칙은 백엔드 공용
 
 MODEL = os.environ.get("ANTHROPIC_MODEL", "claude-haiku-4-5")  # 빠르고 저렴한 기본 모델
 MAX_TOKENS = 1024
@@ -19,18 +23,6 @@ MAX_TOKENS = 1024
 # 학생이 몇 분씩 로딩 표시를 보게 된다. 짧게 끊고 키워드 매칭으로 폴백하는 편이 낫다.
 TIMEOUT_SECONDS = float(os.environ.get("ANTHROPIC_TIMEOUT", "20"))
 MAX_RETRIES = 1  # 일시적 오류만 한 번 재시도 (총 대기 최악 약 40초)
-
-# 답변 규칙. FAQ 자료 밖의 내용은 지어내지 않도록 강하게 제약한다.
-SYSTEM_RULES = (
-    "너는 해커톤 운영을 돕는 친절한 디스코드 FAQ 봇이야. "
-    "학생들의 질문에 아래에 제공된 '해커톤 FAQ 자료'만 근거로 한국어로 답해줘.\n\n"
-    "규칙:\n"
-    "1. 자료에 있는 내용이면 핵심만 간결하게, 친근한 말투로 답해줘. (이모지 조금은 OK)\n"
-    "2. 자료에 없거나 확실하지 않은 내용은 절대 지어내지 말고, "
-    "'그건 제가 가진 자료엔 없어요. 운영진에게 직접 문의해 주세요!' 라고 안내해줘.\n"
-    "3. 일정·장소·비밀번호 같은 구체적인 정보는 자료에 적힌 값을 그대로 알려줘.\n"
-    "4. 답변은 디스코드 메시지로 나가니 너무 길지 않게 해줘."
-)
 
 _client = None
 
@@ -49,20 +41,16 @@ def is_enabled() -> bool:
     return bool(os.environ.get("ANTHROPIC_API_KEY"))
 
 
-def build_faq_context(entries) -> str:
-    """FaqEntry 리스트를 하나의 텍스트 자료로 합친다."""
-    parts = []
-    for e in entries:
-        parts.append(f"## {e.title}\n{e.answer}")
-    return "\n\n".join(parts)
-
-
-def claude_answer(question: str, entries) -> str:
+def answer(question: str, entries) -> str:
     """질문 + FAQ 자료를 Claude에 보내 답변 문자열을 받는다.
+
+    이름이 반드시 `answer`여야 한다 — llm.py가 백엔드를 구분하지 않고
+    `eng.answer(...)`로 부르기 때문이다. (예전엔 `claude_answer`로 되어 있어서
+    Claude 폴백이 호출 시점마다 AttributeError로 죽고 있었다.)
 
     FAQ 자료는 매 요청 동일하므로 prompt caching을 걸어 비용을 아낀다
     (자료가 캐시 최소 크기 미만이면 캐시가 안 걸릴 수 있으나, 걸어둬도 무해).
-    오류는 호출 측(bot.py)에서 잡아 키워드 매칭으로 폴백한다.
+    오류는 호출 측(llm.py)에서 잡아 다른 백엔드나 키워드 매칭으로 폴백한다.
     """
     client = _get_client()
     context = build_faq_context(entries)

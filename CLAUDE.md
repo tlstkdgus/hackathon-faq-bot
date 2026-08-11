@@ -33,7 +33,7 @@ Python 3.10+ / discord.py 2.3+. 키워드 매칭 → Claude 폴백의 2단 구�
   - `# 카테고리` (해시 1개) = 구획용. 매칭엔 영향 없고 `/해커톤주제` 그룹핑에만 쓰임
   - `## 주제 | 키워드1, 키워드2` (해시 2개) = 실제 항목
 - `find_answer()` — 정규화(소문자+공백제거) 후 키워드별 (일치도 × 키워드 길이) 합산.
-  `MIN_SCORE=1.0` 미만이면 `None` 반환 → Claude 폴백으로 넘어감.
+  `MIN_SCORE=1.0` 미만이면 `None` 반환 → LLM 폴백으로 넘어감.
   `FUZZY_THRESHOLD=0.82`로 오타/변형도 일부 잡음
 - **`bot.build_reply()`가 응답 생성의 단일 진입점.** 답변 엔진을 바꿀 땐 이 함수만
   교체하면 된다 (의도된 설계)
@@ -41,11 +41,20 @@ Python 3.10+ / discord.py 2.3+. 키워드 매칭 → Claude 폴백의 2단 구�
   두 엔진 모듈은 지연 import라 한쪽 패키지가 없어도 동작한다.
   `llm.last_used`에 **실제로 답한** 백엔드가 담기므로 통계는 이걸 기록해야 한다
   (`llm.PROVIDER`는 설정값일 뿐이라 폴백 시 틀린 값이 된다)
+- **엔진 모듈의 답변 함수 이름은 `answer` 고정.** `llm.py`가 백엔드를 구분하지 않고
+  `eng.answer(...)`로 부른다. `claude_engine`이 `claude_answer`로 두는 바람에
+  Claude 폴백이 내내 AttributeError로 죽었는데, `describe()`는 "폴백 걸림"으로
+  표시해서 알아채기 어려웠던 전례가 있다. 지금은 `_usable()`이 `answer` 유무를
+  확인해 없는 백엔드를 체인에서 빼고 경고를 찍는다
+- **답변 규칙(`SYSTEM_RULES`)과 `build_faq_context()`는 `llm.py`에 한 벌만 둔다.**
+  두 엔진에 복사해두면 한쪽만 고쳤을 때 백엔드에 따라 답변 톤이 조용히 갈라진다.
+  엔진은 `from llm import SYSTEM_RULES, build_faq_context`로 가져다 쓴다
+  (llm은 엔진을 함수 안에서 지연 import하므로 순환 참조가 되지 않는다)
 - OpenAI 모델명은 라인업이 자주 바뀐다. 코드에 못박지 말고 `OPENAI_MODEL`로 두고,
   모델명 오류 시 `models.list()`로 사용 가능 목록을 로그에 찍는다
 - 질문/답변은 **항상 ephemeral**(본인에게만 보임). 공개 채팅 멘션·`!명령`에는
   안내 메시지(`NUDGE_MSG`)만 나감
-- Claude 호출은 동기 함수라 `asyncio.to_thread`로 감싼다.
+- LLM 호출은 동기 함수라 `asyncio.to_thread`로 감싼다.
   안 그러면 API 응답을 기다리는 동안 봇 전체가 멈춘다
 - 모든 경로는 `paths.py`에서 `__file__` 기준 절대경로로 계산.
   상대경로를 쓰면 systemd 실행 시 cwd가 `/`가 되어 faq.md를 못 찾는다

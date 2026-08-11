@@ -18,7 +18,7 @@
 | `faq.md` | **질문/답변 데이터 — 운영진이 수정할 파일!** (9개 카테고리 / 66개 항목) |
 | `bot.py` | 봇 본체 (실행 파일) |
 | `faq_engine.py` | `faq.md` 파싱 + 키워드 매칭 |
-| `llm.py` | LLM 백엔드 스위치 + 백엔드 간 자동 폴백 |
+| `llm.py` | LLM 백엔드 스위치 + 백엔드 간 자동 폴백 + **공용 답변 규칙(프롬프트)** |
 | `openai_engine.py` | OpenAI로 자연어 답변 생성 |
 | `claude_engine.py` | Claude로 자연어 답변 생성 (동일 인터페이스) |
 | `stats_engine.py` | 질문 사용 기록/집계 |
@@ -265,6 +265,16 @@ python digest.py 24
 - **`/해커톤질문`이 자동완성에 안 떠요** → `applications.commands` 스코프로 재초대했는지, `.env`에 `DISCORD_GUILD_ID`를 넣었는지 확인 (안 넣으면 반영에 최대 1시간)
 - **`DISCORD_TOKEN 환경변수가 없습니다`** → 위 3번의 토큰 설정을 다시 확인
 - **`pip install` 이 안 먹혀요 (Windows)** → `pip` 대신 `python -m pip install -r requirements.txt` 사용
+- **`python --version` 이 버전 없이 `Python` 만 찍고 끝나요 (Windows)** → PATH에 잡힌 게 실제 파이썬이 아니라
+  **Microsoft Store 앱 실행 별칭**(`%LOCALAPPDATA%\Microsoft\WindowsApps\python.exe`, 0바이트 스텁)입니다.
+  파이썬이 설치돼 있어도 이렇게 보이니 "설치 안 됨"으로 오해하기 쉬워요.
+  실제 설치 경로는 `where python` 대신 아래로 확인하고, 그 경로를 직접 쓰거나 PATH 앞에 두세요.
+  ```powershell
+  # 설치된 파이썬 목록 (uv·공식 설치본 모두 여기에 등록됩니다)
+  reg query HKCU\SOFTWARE\Python /s /f InstallPath
+  reg query HKLM\SOFTWARE\Python /s /f InstallPath
+  ```
+  설정 → 앱 → **앱 실행 별칭**에서 python.exe 별칭을 끄면 혼동이 사라집니다.
 - **질문을 못 알아들어요** → 해당 주제의 키워드에 그 표현을 추가하고 `!리로드` (또는 `unanswered.log` 확인)
 - **`.env`를 고쳤는데 반영이 안 돼요** → 봇을 재시작해야 합니다. `.env`는 시작할 때 한 번만 읽습니다.
   로컬은 `Ctrl+C` 후 `python bot.py`, 서버는 `sudo systemctl restart faq-bot`
@@ -272,6 +282,7 @@ python digest.py 24
 - **지금은 운영시간이 아니라고만 떠요** → 정상 동작입니다. `QA_START_HOUR`/`QA_END_HOUR`로 시간을 조정하세요.
 - **엉뚱한 주제로 답해요** → 그 주제에 범용 키워드가 들어가 있을 가능성이 높습니다. 위 5번의 주의사항 참고
 - **`OpenAI 모델 '...'을(를) 쓸 수 없습니다`** → 모델명이 바뀐 것입니다. 로그에 사용 가능한 모델 목록이 함께 출력되니 그중 하나를 `OPENAI_MODEL`에 넣으세요
+- **`... 백엔드에 answer() 함수가 없습니다`** → 그 엔진 모듈의 답변 함수 이름이 `answer`가 아닙니다. 해당 백엔드는 건너뛰고 나머지로 동작합니다 (위 [LLM 백엔드](#llm-백엔드-전환과-자동-폴백) 참고)
 
 ## LLM 백엔드 전환과 자동 폴백
 
@@ -295,6 +306,10 @@ LLM_FALLBACK=claude    # 주 백엔드가 실패하면 여기로
 통계(`/해커톤통계`)에는 **실제로 답한** 백엔드가 기록되므로, 폴백이 얼마나
 동작했는지도 나중에 확인할 수 있습니다.
 
+> **답변 규칙(프롬프트)은 `llm.py`에 한 벌만 있습니다.** 예전에는 두 엔진 파일에
+> 똑같이 복사돼 있었는데, 한쪽만 고치면 어느 백엔드가 답했느냐에 따라 말투가
+> 조용히 갈라집니다. 학생은 어느 쪽이 답했는지 알 수 없으니 한곳에서 관리합니다.
+
 **비용은 얼마나 드나요** — 키워드로 잡히는 질문은 API를 아예 부르지 않습니다.
 LLM으로 넘어가는 질문만 과금되고, `gpt-5.6-luna` 기준 **1,000건에 약 1,000~5,000원**입니다.
 (FAQ 자료가 매번 앞에 붙지만 내용이 동일해서 프롬프트 캐싱이 걸립니다)
@@ -302,6 +317,10 @@ LLM으로 넘어가는 질문만 과금되고, `gpt-5.6-luna` 기준 **1,000건�
 **또 다른 LLM을 붙이려면** `claude_engine.py`와 같은 인터페이스
 (`is_enabled()`, `answer(question, entries)`)로 모듈을 만들고 `llm.py`의
 `_load()`에 한 줄 추가하면 됩니다. `bot.py`, `faq_engine.py`는 손댈 필요 없습니다.
+
+⚠️ **함수 이름은 반드시 `answer`여야 합니다.** `llm.py`가 백엔드를 구분하지 않고
+`eng.answer(...)`로 부르기 때문입니다. 이름이 다르면 그 백엔드는 체인에서 제외되고
+시작 로그에 `answer() 함수가 없습니다` 경고가 찍힙니다.
 
 ## 매칭이 어떻게 동작하나
 

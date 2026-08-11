@@ -2,12 +2,12 @@
 """
 hours.py — 질문 운영시간 판단.
 
-기본 운영시간은 한국시간(KST) 기준 10:00~17:00. .env의 QA_START_HOUR /
-QA_END_HOUR로 조정 가능.
+기본은 24시간 개방. 한국시간(KST) 기준이고 .env의 QA_START_HOUR /
+QA_END_HOUR로 조정한다.
 
 설정 예시:
-    QA_START_HOUR=10, QA_END_HOUR=17  → 낮 10시~오후 5시 (기본값)
-    QA_START_HOUR=0,  QA_END_HOUR=24  → 24시간 항상 받기
+    QA_START_HOUR=0,  QA_END_HOUR=24  → 24시간 항상 받기 (기본값)
+    QA_START_HOUR=10, QA_END_HOUR=17  → 낮 10시~오후 5시
     QA_START_HOUR=20, QA_END_HOUR=4   → 밤 8시~새벽 4시 (자정을 넘김. 밤샘 해커톤용)
 
 discord 의존성 없음 → 단독 테스트 가능.

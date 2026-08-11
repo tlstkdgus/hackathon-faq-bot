@@ -2,7 +2,7 @@
 """
 해커톤 FAQ 디스코드 봇
 - faq.md에 있는 키워드/답변으로 학생 질문에 자동 응답
-- 키워드로 못 잡으면 Claude(LLM)가 FAQ 자료를 근거로 자연어 답변 (선택)
+- 키워드로 못 잡으면 LLM(OpenAI/Claude)이 FAQ 자료를 근거로 자연어 답변 (선택)
 - 질문/답변은 항상 비공개(ephemeral)로 나가고, 공개 채팅에는 안내만 남긴다
 
 명령어
@@ -110,9 +110,9 @@ def build_reply(question: str, user_id: int) -> str:
     """응답 생성의 단일 진입점.
 
     1) 먼저 강화된 키워드 매칭으로 답을 찾는다 (빠르고 무료).
-    2) 키워드로 확실히 못 찾은 경우에만 Claude Haiku로 자연어 답변 시도
-       (ANTHROPIC_API_KEY가 있을 때). → 대부분은 무료, 애매한 질문만 API 사용.
-    3) Claude도 못 쓰거나 오류면 안내 메시지.
+    2) 키워드로 확실히 못 찾은 경우에만 LLM으로 자연어 답변 시도 (API 키가 있을 때).
+       → 대부분은 무료, 애매한 질문만 API 사용.
+    3) LLM도 못 쓰거나 모든 백엔드가 실패하면 안내 메시지.
     키워드가 못 잡은 질문은 unanswered.log에, 모든 질문은 stats.log(통계용)에 남긴다.
     """
     entry = find_answer(question, faq_entries)
@@ -238,9 +238,9 @@ async def slash_ask(interaction: discord.Interaction, 내용: str):
     if not hours.is_operating_hours():
         await interaction.response.send_message(CLOSED_MSG, ephemeral=True)
         return
-    # Claude 폴백이 몇 초 걸릴 수 있으니 먼저 응답 지연 예약(3초 제한 회피), 둘 다 비공개.
+    # LLM 폴백이 몇 초 걸릴 수 있으니 먼저 응답 지연 예약(3초 제한 회피), 둘 다 비공개.
     await interaction.response.defer(ephemeral=True)
-    # build_reply 내부의 Claude 호출(anthropic SDK)이 동기(blocking) 함수라
+    # build_reply 내부의 LLM 호출(anthropic/openai SDK)이 동기(blocking) 함수라
     # 그대로 부르면 응답을 기다리는 동안 봇 전체(다른 학생들 요청 포함)가 멈춘다.
     # 별도 스레드에서 돌려서 이벤트 루프가 다른 사람 요청을 계속 처리하게 한다.
     #

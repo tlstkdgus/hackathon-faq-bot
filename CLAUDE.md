@@ -102,6 +102,10 @@ pytest로 매칭 정확도 회귀 테스트를 짜두면 키워드를 늘릴 때
 - `DISCORD_TOKEN`, `ANTHROPIC_API_KEY`는 절대 커밋 금지.
   `.env`는 `.gitignore`에 있고, `.env.example`은 값이 빈 채로 커밋한다
 - `stats.log` / `unanswered.log`도 커밋 금지 (학생 질문 본문·사용자 ID 포함)
+- `unanswered.log`는 `시각 / [처리주체] / 사용자ID / 질문` 4칸이다. 사용자ID가 없던
+  시절의 3칸 줄도 남아 있을 수 있으므로 `digest._parse_line`은 둘 다 받는다.
+  칸 수를 바꿀 땐 이 파서를 같이 고칠 것 — 형식이 안 맞는 줄은 조용히 버려져서
+  리포트가 "미답변 0건"으로 나가고, 아무도 이상하다고 느끼지 못한다
 - `faq_engine.py`, `hours.py`, `stats_engine.py`, `claude_engine.py`는
   **discord 의존성이 없게 유지할 것** (단독 테스트 가능해야 함)
 - 답변 엔진을 교체해도 `/해커톤주제`, `!리로드` 명령은 유지

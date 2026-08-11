@@ -63,6 +63,12 @@ Python 3.10+ / discord.py 2.3+. 키워드 매칭 → Claude 폴백의 2단 구�
 
 - 서버 접속 후 `bash deploy/setup.sh` 하나로 설치 완료 (여러 번 실행해도 안전)
 - 코드 갱신은 `bash deploy/update.sh`
+- `.github/workflows/deploy.yml` — main 푸시 시 SSH로 `update.sh` 실행.
+  시크릿(`ORACLE_HOST`/`ORACLE_SSH_KEY`)이 없으면 **실패가 아니라 skip**한다
+  (미설정 상태의 빨간 X와 진짜 배포 실패를 구분하기 위해).
+  문서만 바뀐 커밋은 paths 필터로 걸러 봇을 재시작하지 않는다.
+  **서버에서 `faq.md`를 직접 고치면 `git pull --ff-only`가 막혀 자동 배포가 깨진다** —
+  서버 직접 수정과 자동 배포는 양립하지 않는다
 - **서버리스 불가**: websocket 상시 연결이 필요하다 (`intents.message_content`, `on_message`)
 - **인바운드 포트 불필요**: 아웃바운드만 쓰므로 Security List/iptables 손댈 것 없음
 - Shape은 AMD Micro(1GB)로 충분. ARM은 "Out of capacity"로 잘 안 잡히는데

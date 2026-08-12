@@ -95,6 +95,20 @@ def test_restriction_blocks_dm():
     assert bot.is_allowed_channel(FakeInteraction(None)) is False
 
 
+def test_wrong_channel_msg_links_allowed_channels():
+    """안내에 채널 '링크'가 들어가야 한다.
+
+    채널 이름을 문자열로 박으면 채널명이 바뀌었을 때 조용히 틀린 안내가
+    나간다. <#ID> 형식은 디스코드가 클릭 가능한 링크로 렌더링하고,
+    이름이 바뀌어도 항상 맞는 곳을 가리킨다.
+    """
+    bot = _load_bot("123,456")
+    msg = bot.wrong_channel_msg()
+    assert "<#123>" in msg and "<#456>" in msg, msg
+    # 어디로 가야 하는지가 빠지면 안내의 의미가 없다.
+    assert "질문" in msg
+
+
 def test_all_typo_ids_means_locked_down():
     """전부 오타면 허용 채널이 0개다.
 

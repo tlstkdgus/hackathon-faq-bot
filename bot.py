@@ -102,6 +102,17 @@ def is_allowed_channel(interaction: "discord.Interaction") -> bool:
         return True
     return interaction.channel_id in ALLOWED_CHANNEL_IDS
 
+
+def wrong_channel_msg() -> str:
+    """허용 채널이 아닐 때 보낼 안내. 갈 곳을 알려주는 게 핵심이다.
+
+    `<#채널ID>`는 디스코드에서 클릭 가능한 채널 링크로 렌더링된다.
+    채널 이름을 문자열로 박아두면 채널명이 바뀌었을 때 조용히 틀린 안내가
+    나가지만, ID 링크는 이름이 바뀌어도 항상 맞는 곳을 가리킨다.
+    """
+    links = " ".join(f"<#{cid}>" for cid in sorted(ALLOWED_CHANNEL_IDS))
+    return f"🔒 여기서는 질문을 받지 않아요.\n{links} 에서 물어봐 주세요!"
+
 intents = discord.Intents.default()
 intents.message_content = True  # 개발자 포털에서 MESSAGE CONTENT INTENT 켜야 함
 
@@ -276,10 +287,11 @@ async def on_message(message: discord.Message):
 @app_commands.describe(내용="궁금한 내용을 적어주세요")
 async def slash_ask(interaction: discord.Interaction, 내용: str):
     """/해커톤질문 <내용> — 질문과 답변 모두 질문한 본인에게만 보임(ephemeral)."""
-    # 허용 채널이 아니면 응답 자체를 하지 않는다. 3초 안에 아무 응답도 없으면
-    # 디스코드가 질문한 본인에게만 "응답하지 않았습니다"를 띄우고 끝난다.
-    # 채널에는 아무것도 남지 않는다. (운영 결정: 안내 대신 무시)
+    # 허용 채널이 아니면 갈 곳을 안내한다. ephemeral이라 채널엔 안 남는다.
+    # (응답을 아예 안 하면 디스코드가 "응답하지 않았습니다" 오류를 띄워
+    #  학생 눈에는 봇 고장으로 보인다. 그래서 안내를 보내는 쪽을 택했다.)
     if not is_allowed_channel(interaction):
+        await interaction.response.send_message(wrong_channel_msg(), ephemeral=True)
         return
     if not hours.is_operating_hours():
         await interaction.response.send_message(CLOSED_MSG, ephemeral=True)
@@ -305,6 +317,7 @@ async def slash_ask(interaction: discord.Interaction, 내용: str):
 async def slash_topics(interaction: discord.Interaction):
     """/해커톤주제 — 답변 가능한 주제 목록 (본인에게만 보임)."""
     if not is_allowed_channel(interaction):
+        await interaction.response.send_message(wrong_channel_msg(), ephemeral=True)
         return
     if not faq_entries:
         await interaction.response.send_message(
@@ -321,6 +334,7 @@ async def slash_topics(interaction: discord.Interaction):
 async def slash_help(interaction: discord.Interaction):
     """/해커톤도움 — 사용법 안내 (본인에게만 보임)."""
     if not is_allowed_channel(interaction):
+        await interaction.response.send_message(wrong_channel_msg(), ephemeral=True)
         return
     await interaction.response.send_message(USAGE_MSG, ephemeral=True)
 

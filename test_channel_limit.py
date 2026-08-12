@@ -186,6 +186,26 @@ def test_student_msg_wording_unchanged():
     assert "물어봐 주세요" in msg, msg
 
 
+def test_missing_permission_reply_only_in_admin_channel():
+    """`!리로드` 권한 오류 응답은 운영진 채널에서만 나가야 한다.
+
+    권한 검사가 데코레이터라 채널 검사보다 먼저 돈다. 그래서 권한 없는
+    학생이 학생 채널에서 `!리로드`를 치면 채널 게이트에 닿지 못하고
+    "관리자만 사용할 수 있어요"가 **공개로** 그 채널에 남는다.
+    장난으로 반복하면 안내만 쌓이므로 운영진 채널 밖에서는 조용히 무시한다.
+
+    on_command_error가 이 판단에 쓰는 것도 is_admin_channel()이라, 게이트를
+    여기서 함께 고정해두면 분기가 갈라지는 것을 막을 수 있다.
+    """
+    bot = _load_bot("123", digest="777")
+    assert bot.is_admin_channel(777) is True, "운영진 채널에서는 안내가 나가야 한다"
+    assert bot.is_admin_channel(123) is False, "학생 채널에서는 조용해야 한다"
+
+    # 제한이 없으면 기존처럼 어디서나 안내가 나간다 (하위 호환)
+    bot = _load_bot("123", digest="")
+    assert bot.is_admin_channel(123) is True
+
+
 def _cleanup():
     os.environ.pop("ALLOWED_CHANNEL_IDS", None)
     os.environ.pop("DIGEST_CHANNEL_ID", None)

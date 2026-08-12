@@ -428,7 +428,13 @@ async def reload_faq(ctx: commands.Context):
 async def on_command_error(ctx: commands.Context, error):
     """공개 `!명령`으로 질문해도 답하지 않고 /질문 사용을 안내한다."""
     if isinstance(error, commands.MissingPermissions):
-        await ctx.reply("이 명령은 서버 관리자만 사용할 수 있어요.")
+        # 권한 검사는 데코레이터라 명령 본문(=채널 검사)보다 먼저 돈다.
+        # 그래서 권한 없는 학생이 학생 채널에서 `!리로드`를 치면 채널 게이트에
+        # 닿기 전에 여기로 온다. 이 응답은 ephemeral이 아니라 채널에 남으므로,
+        # 운영진 채널이 아니면 조용히 무시한다 (장난으로 반복하면 안내만 쌓인다).
+        # 제한이 설정돼 있지 않으면 is_admin_channel()이 True라 기존 동작 그대로.
+        if is_admin_channel(ctx.channel.id):
+            await ctx.reply("이 명령은 서버 관리자만 사용할 수 있어요.")
         return
     if isinstance(error, commands.CommandNotFound):
         # !질문, !식사 등 → 공개로 답하지 않고 /질문 안내

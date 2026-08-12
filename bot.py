@@ -66,6 +66,53 @@ except ValueError:
 # 보내기 직전에 잘라준다. faq.md에 운영진이 아주 긴 답변을 넣어도 봇이 죽지 않게 하는 안전장치.
 DISCORD_MAX_LEN = 2000
 
+
+def _parse_channel_ids(raw: str) -> set:
+    """"123,456" 같은 문자열을 채널 ID 집합으로. 숫자가 아닌 값은 경고 후 버린다.
+
+    조용히 버리면 오타 하나로 질문 채널이 통째로 막히는데, 봇은 멀쩡히 떠 있어서
+    원인을 찾기 어렵다. 시작 로그에 남겨 바로 알아채게 한다.
+    """
+    ids = set()
+    for part in raw.split(","):
+        part = part.strip()
+        if not part:
+            continue
+        if not part.isdigit():
+            print(f"⚠️ ALLOWED_CHANNEL_IDS에 숫자가 아닌 값이 있어 무시합니다: {part!r}")
+            continue
+        ids.add(int(part))
+    return ids
+
+
+# ── 질문 채널 제한 ──
+# 학생용 명령(/해커톤질문·/해커톤주제·/해커톤도움)을 받을 채널을 제한한다.
+# 비워두면 제한 없음 = 봇이 볼 수 있는 모든 채널에서 동작 (기존 동작 그대로).
+# 쉼표로 여러 개 지정 가능. 운영진 명령(/해커톤통계·!리로드)에는 적용하지 않는다.
+ALLOWED_CHANNEL_IDS = _parse_channel_ids(os.environ.get("ALLOWED_CHANNEL_IDS", ""))
+
+
+def is_allowed_channel(interaction: "discord.Interaction") -> bool:
+    """이 채널에서 학생용 명령을 받아도 되는지.
+
+    제한이 설정돼 있지 않으면 항상 True다. 제한이 걸려 있으면 DM도 막힌다
+    (DM의 channel_id는 목록에 있을 수 없으므로).
+    """
+    if not ALLOWED_CHANNEL_IDS:
+        return True
+    return interaction.channel_id in ALLOWED_CHANNEL_IDS
+
+
+def wrong_channel_msg() -> str:
+    """허용 채널이 아닐 때 보낼 안내. 갈 곳을 알려주는 게 핵심이다.
+
+    `<#채널ID>`는 디스코드에서 클릭 가능한 채널 링크로 렌더링된다.
+    채널 이름을 문자열로 박아두면 채널명이 바뀌었을 때 조용히 틀린 안내가
+    나가지만, ID 링크는 이름이 바뀌어도 항상 맞는 곳을 가리킨다.
+    """
+    links = " ".join(f"<#{cid}>" for cid in sorted(ALLOWED_CHANNEL_IDS))
+    return f"🔒 여기서는 질문을 받지 않아요.\n{links} 에서 물어봐 주세요!"
+
 intents = discord.Intents.default()
 intents.message_content = True  # 개발자 포털에서 MESSAGE CONTENT INTENT 켜야 함
 
@@ -155,6 +202,11 @@ async def on_ready():
         print(f"⚠️ 슬래시 커맨드 동기화 실패: {e}")
     print(f"✅ 로그인 성공: {bot.user} (FAQ {len(faq_entries)}개 로드, 답변 모드: {mode})")
     print(f"   질문 운영시간: 매일 {hours.describe()} (KST)")
+    if ALLOWED_CHANNEL_IDS:
+        print(f"   질문 채널: {len(ALLOWED_CHANNEL_IDS)}개로 제한 "
+              f"({', '.join(str(c) for c in sorted(ALLOWED_CHANNEL_IDS))})")
+    else:
+        print("   질문 채널: 제한 없음 (모든 채널)")
     print(f"   FAQ 파일: {FAQ_FILE}")
     print(f"   로그 폴더: {DATA_DIR}")
     if not faq_entries:
@@ -235,6 +287,12 @@ async def on_message(message: discord.Message):
 @app_commands.describe(내용="궁금한 내용을 적어주세요")
 async def slash_ask(interaction: discord.Interaction, 내용: str):
     """/해커톤질문 <내용> — 질문과 답변 모두 질문한 본인에게만 보임(ephemeral)."""
+    # 허용 채널이 아니면 갈 곳을 안내한다. ephemeral이라 채널엔 안 남는다.
+    # (응답을 아예 안 하면 디스코드가 "응답하지 않았습니다" 오류를 띄워
+    #  학생 눈에는 봇 고장으로 보인다. 그래서 안내를 보내는 쪽을 택했다.)
+    if not is_allowed_channel(interaction):
+        await interaction.response.send_message(wrong_channel_msg(), ephemeral=True)
+        return
     if not hours.is_operating_hours():
         await interaction.response.send_message(CLOSED_MSG, ephemeral=True)
         return
@@ -258,6 +316,9 @@ async def slash_ask(interaction: discord.Interaction, 내용: str):
 @bot.tree.command(name="해커톤주제", description="제가 답할 수 있는 주제 목록을 나에게만 보여줘요")
 async def slash_topics(interaction: discord.Interaction):
     """/해커톤주제 — 답변 가능한 주제 목록 (본인에게만 보임)."""
+    if not is_allowed_channel(interaction):
+        await interaction.response.send_message(wrong_channel_msg(), ephemeral=True)
+        return
     if not faq_entries:
         await interaction.response.send_message(
             "아직 등록된 주제가 없어요. 운영진에게 알려주세요!", ephemeral=True
@@ -272,6 +333,9 @@ async def slash_topics(interaction: discord.Interaction):
 @bot.tree.command(name="해커톤도움", description="사용법 안내를 나에게만 보여줘요")
 async def slash_help(interaction: discord.Interaction):
     """/해커톤도움 — 사용법 안내 (본인에게만 보임)."""
+    if not is_allowed_channel(interaction):
+        await interaction.response.send_message(wrong_channel_msg(), ephemeral=True)
+        return
     await interaction.response.send_message(USAGE_MSG, ephemeral=True)
 
 

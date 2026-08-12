@@ -25,9 +25,14 @@ BASE_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(BASE_DIR))
 
 
-def _load_bot(allowed: str):
-    """ALLOWED_CHANNEL_IDS를 주고 bot 모듈을 다시 읽어온다."""
+def _load_bot(allowed: str, digest: str = ""):
+    """ALLOWED_CHANNEL_IDS / DIGEST_CHANNEL_ID를 주고 bot 모듈을 다시 읽어온다.
+
+    운영진 명령(/해커톤통계·!리로드)의 채널 제한은 DIGEST_CHANNEL_ID를
+    재사용하므로 함께 주입한다.
+    """
     os.environ["ALLOWED_CHANNEL_IDS"] = allowed
+    os.environ["DIGEST_CHANNEL_ID"] = digest
     # bot.py는 load_dotenv()를 부르는데, 실제 .env가 있으면 그 값이 우선될 수
     # 있다. override=False가 기본이라 이미 설정된 환경변수는 덮이지 않는다.
     import bot
@@ -122,8 +127,88 @@ def test_all_typo_ids_means_locked_down():
     assert bot.is_allowed_channel(FakeInteraction(123)) is True
 
 
+# ── 운영진 명령 채널 제한 (DIGEST_CHANNEL_ID 재사용) ──────────────
+
+def test_admin_no_restriction_when_digest_unset():
+    """리포트를 안 쓰는 서버는 운영진 명령이 어디서나 되어야 한다 (하위 호환).
+
+    이게 깨지면 DIGEST_CHANNEL_ID를 안 넣은 서버에서 !리로드가 통째로
+    막히고, 봇은 멀쩡히 떠 있어서 원인을 찾기 어렵다.
+    """
+    bot = _load_bot("123", digest="")
+    assert bot.ADMIN_CHANNEL_IDS == set()
+    for cid in (1, 123, 999999999999999999, None):
+        assert bot.is_admin_channel(cid) is True
+
+
+def test_admin_restricted_to_digest_channel():
+    bot = _load_bot("123", digest="777")
+    assert bot.ADMIN_CHANNEL_IDS == {777}
+    assert bot.is_admin_channel(777) is True
+    assert bot.is_admin_channel(123) is False, "학생 질문 채널에서는 운영진 명령이 막혀야 한다"
+    assert bot.is_admin_channel(None) is False
+
+
+def test_admin_and_student_gates_are_independent():
+    """두 게이트가 서로를 침범하지 않아야 한다."""
+    bot = _load_bot("123", digest="777")
+    assert bot.is_allowed_channel(FakeInteraction(123)) is True
+    assert bot.is_allowed_channel(FakeInteraction(777)) is False
+    assert bot.is_admin_channel(123) is False
+    assert bot.is_admin_channel(777) is True
+
+
+def test_admin_digest_typo_falls_back_to_no_restriction():
+    """DIGEST_CHANNEL_ID가 숫자가 아니면 제한이 걸리지 않는다.
+
+    운영진 명령을 통째로 막아버리는 것보다 낫다고 보고 이렇게 뒀다.
+    경고가 시작 로그에 찍히므로 알아챌 수 있다. 학생용(ALLOWED_CHANNEL_IDS)의
+    오타 처리와 같은 방침이다.
+    """
+    bot = _load_bot("123", digest="운영진채널")
+    assert bot.ADMIN_CHANNEL_IDS == set()
+    assert bot.is_admin_channel(123) is True
+
+
+def test_wrong_admin_channel_msg_links_digest_channel():
+    bot = _load_bot("123", digest="777")
+    msg = bot.wrong_admin_channel_msg()
+    assert "<#777>" in msg, msg
+    assert "<#123>" not in msg, "학생 채널을 안내하면 안 된다: " + msg
+    assert "운영진" in msg
+
+
+def test_student_msg_wording_unchanged():
+    """README와 학생 공지에 이 문구가 그대로 실려 있다. 바뀌면 안내가 어긋난다."""
+    bot = _load_bot("123", digest="777")
+    msg = bot.wrong_channel_msg()
+    assert "여기서는 질문을 받지 않아요" in msg, msg
+    assert "물어봐 주세요" in msg, msg
+
+
+def test_missing_permission_reply_only_in_admin_channel():
+    """`!리로드` 권한 오류 응답은 운영진 채널에서만 나가야 한다.
+
+    권한 검사가 데코레이터라 채널 검사보다 먼저 돈다. 그래서 권한 없는
+    학생이 학생 채널에서 `!리로드`를 치면 채널 게이트에 닿지 못하고
+    "관리자만 사용할 수 있어요"가 **공개로** 그 채널에 남는다.
+    장난으로 반복하면 안내만 쌓이므로 운영진 채널 밖에서는 조용히 무시한다.
+
+    on_command_error가 이 판단에 쓰는 것도 is_admin_channel()이라, 게이트를
+    여기서 함께 고정해두면 분기가 갈라지는 것을 막을 수 있다.
+    """
+    bot = _load_bot("123", digest="777")
+    assert bot.is_admin_channel(777) is True, "운영진 채널에서는 안내가 나가야 한다"
+    assert bot.is_admin_channel(123) is False, "학생 채널에서는 조용해야 한다"
+
+    # 제한이 없으면 기존처럼 어디서나 안내가 나간다 (하위 호환)
+    bot = _load_bot("123", digest="")
+    assert bot.is_admin_channel(123) is True
+
+
 def _cleanup():
     os.environ.pop("ALLOWED_CHANNEL_IDS", None)
+    os.environ.pop("DIGEST_CHANNEL_ID", None)
 
 
 if __name__ == "__main__":

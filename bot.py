@@ -67,11 +67,12 @@ except ValueError:
 DISCORD_MAX_LEN = 2000
 
 
-def _parse_channel_ids(raw: str) -> set:
+def _parse_channel_ids(raw: str, name: str = "ALLOWED_CHANNEL_IDS") -> set:
     """"123,456" 같은 문자열을 채널 ID 집합으로. 숫자가 아닌 값은 경고 후 버린다.
 
     조용히 버리면 오타 하나로 질문 채널이 통째로 막히는데, 봇은 멀쩡히 떠 있어서
     원인을 찾기 어렵다. 시작 로그에 남겨 바로 알아채게 한다.
+    name은 경고에 찍을 환경변수 이름이다 (어느 값이 틀렸는지 알려주려고).
     """
     ids = set()
     for part in raw.split(","):
@@ -79,7 +80,7 @@ def _parse_channel_ids(raw: str) -> set:
         if not part:
             continue
         if not part.isdigit():
-            print(f"⚠️ ALLOWED_CHANNEL_IDS에 숫자가 아닌 값이 있어 무시합니다: {part!r}")
+            print(f"⚠️ {name}에 숫자가 아닌 값이 있어 무시합니다: {part!r}")
             continue
         ids.add(int(part))
     return ids
@@ -91,6 +92,27 @@ def _parse_channel_ids(raw: str) -> set:
 # 쉼표로 여러 개 지정 가능. 운영진 명령(/해커톤통계·!리로드)에는 적용하지 않는다.
 ALLOWED_CHANNEL_IDS = _parse_channel_ids(os.environ.get("ALLOWED_CHANNEL_IDS", ""))
 
+# ── 운영진 명령 채널 제한 ──
+# /해커톤통계·!리로드를 받을 채널. 별도 환경변수를 두지 않고 DIGEST_CHANNEL_ID를
+# 재사용한다 — 미답변 리포트가 가는 곳이 곧 운영진 전용 채널이라, 운영진 명령을
+# 쓸 곳도 같은 채널이 자연스럽다. 설정이 하나 줄어드는 이점도 있다.
+#
+# 주의: 리포트 채널을 옮기면 운영진 명령을 쓸 수 있는 곳도 같이 따라간다.
+# 둘을 따로 두고 싶어지면 ADMIN_CHANNEL_IDS를 새로 만들 것.
+# 비어 있으면(리포트 기능을 안 쓰면) 제한 없음 = 기존 동작 그대로.
+ADMIN_CHANNEL_IDS = _parse_channel_ids(DIGEST_CHANNEL_ID, "DIGEST_CHANNEL_ID")
+
+
+def _channel_ok(channel_id, allowed: set) -> bool:
+    """channel_id가 허용 목록에 있는지. 목록이 비어 있으면 제한 없음.
+
+    학생용·운영진용 게이트가 이 함수 하나를 공유한다. 검사를 두 벌로 나눠두면
+    한쪽만 고쳤을 때 동작이 조용히 갈라진다.
+    """
+    if not allowed:
+        return True
+    return channel_id in allowed
+
 
 def is_allowed_channel(interaction: "discord.Interaction") -> bool:
     """이 채널에서 학생용 명령을 받아도 되는지.
@@ -98,20 +120,38 @@ def is_allowed_channel(interaction: "discord.Interaction") -> bool:
     제한이 설정돼 있지 않으면 항상 True다. 제한이 걸려 있으면 DM도 막힌다
     (DM의 channel_id는 목록에 있을 수 없으므로).
     """
-    if not ALLOWED_CHANNEL_IDS:
-        return True
-    return interaction.channel_id in ALLOWED_CHANNEL_IDS
+    return _channel_ok(interaction.channel_id, ALLOWED_CHANNEL_IDS)
 
 
-def wrong_channel_msg() -> str:
-    """허용 채널이 아닐 때 보낼 안내. 갈 곳을 알려주는 게 핵심이다.
+def is_admin_channel(channel_id) -> bool:
+    """이 채널에서 운영진 명령(/해커톤통계·!리로드)을 받아도 되는지.
 
-    `<#채널ID>`는 디스코드에서 클릭 가능한 채널 링크로 렌더링된다.
+    슬래시 커맨드는 interaction.channel_id, `!리로드`는 ctx.channel.id를
+    넘긴다. 타입이 달라서 인터랙션 객체가 아니라 ID를 받는다.
+    """
+    return _channel_ok(channel_id, ADMIN_CHANNEL_IDS)
+
+
+def _channel_links(allowed: set) -> str:
+    """`<#ID>` 링크 목록. 디스코드가 클릭 가능한 채널 링크로 렌더링한다.
+
     채널 이름을 문자열로 박아두면 채널명이 바뀌었을 때 조용히 틀린 안내가
     나가지만, ID 링크는 이름이 바뀌어도 항상 맞는 곳을 가리킨다.
     """
-    links = " ".join(f"<#{cid}>" for cid in sorted(ALLOWED_CHANNEL_IDS))
-    return f"🔒 여기서는 질문을 받지 않아요.\n{links} 에서 물어봐 주세요!"
+    return " ".join(f"<#{cid}>" for cid in sorted(allowed))
+
+
+def wrong_channel_msg() -> str:
+    """학생용 명령을 허용 채널 밖에서 썼을 때의 안내. 갈 곳을 알려주는 게 핵심."""
+    return f"🔒 여기서는 질문을 받지 않아요.\n{_channel_links(ALLOWED_CHANNEL_IDS)} 에서 물어봐 주세요!"
+
+
+def wrong_admin_channel_msg() -> str:
+    """운영진 명령을 허용 채널 밖에서 썼을 때의 안내."""
+    return (
+        f"🔒 운영진 명령은 여기서 쓸 수 없어요.\n"
+        f"{_channel_links(ADMIN_CHANNEL_IDS)} 에서 사용해 주세요!"
+    )
 
 intents = discord.Intents.default()
 intents.message_content = True  # 개발자 포털에서 MESSAGE CONTENT INTENT 켜야 함
@@ -207,6 +247,11 @@ async def on_ready():
               f"({', '.join(str(c) for c in sorted(ALLOWED_CHANNEL_IDS))})")
     else:
         print("   질문 채널: 제한 없음 (모든 채널)")
+    if ADMIN_CHANNEL_IDS:
+        print(f"   운영진 채널: {', '.join(str(c) for c in sorted(ADMIN_CHANNEL_IDS))} "
+              f"(/해커톤통계·!리로드)")
+    else:
+        print("   운영진 채널: 제한 없음 (DIGEST_CHANNEL_ID 미설정)")
     print(f"   FAQ 파일: {FAQ_FILE}")
     print(f"   로그 폴더: {DATA_DIR}")
     if not faq_entries:
@@ -341,10 +386,14 @@ async def slash_help(interaction: discord.Interaction):
 
 @bot.tree.command(name="해커톤통계", description="[관리자] 지금까지 질문 사용 통계를 보여줘요")
 async def slash_stats(interaction: discord.Interaction):
-    """/해커톤통계 — 서버 관리 권한이 있는 사람만 볼 수 있음 (본인에게만 표시)."""
+    """/해커톤통계 — 서버 관리 권한이 있는 사람만, 운영진 채널에서만."""
+    # 권한을 먼저 본다. 권한 없는 사람에게 운영진 채널 링크를 알려줄 이유가 없다.
     perms = interaction.user.guild_permissions if isinstance(interaction.user, discord.Member) else None
     if not (perms and perms.manage_guild):
         await interaction.response.send_message("이 명령은 서버 관리자만 사용할 수 있어요.", ephemeral=True)
+        return
+    if not is_admin_channel(interaction.channel_id):
+        await interaction.response.send_message(wrong_admin_channel_msg(), ephemeral=True)
         return
     await interaction.response.defer(ephemeral=True)
     summary = await asyncio.to_thread(compute_stats)
@@ -354,8 +403,14 @@ async def slash_stats(interaction: discord.Interaction):
 @bot.command(name="리로드")
 @commands.has_permissions(manage_guild=True)
 async def reload_faq(ctx: commands.Context):
-    """!리로드 — faq.md를 다시 불러오기 (서버 관리 권한 필요)"""
+    """!리로드 — faq.md를 다시 불러오기 (서버 관리 권한 + 운영진 채널)"""
     global faq_entries
+    # 슬래시 커맨드와 달리 ctx라서 channel_id 대신 ctx.channel.id를 넘긴다.
+    # 여기 응답은 ephemeral이 아니라 채널에 남는다. 그래서 학생 채널에서
+    # 눌렸을 때 "리로드 완료" 같은 운영 메시지가 공개로 새지 않게 막는 의미도 있다.
+    if not is_admin_channel(ctx.channel.id):
+        await ctx.reply(wrong_admin_channel_msg())
+        return
     entries = _load_entries()
     if not entries:
         # 실수로 faq.md를 깨뜨렸을 때, 기존에 잘 돌던 FAQ까지 날려버리면 안 된다.

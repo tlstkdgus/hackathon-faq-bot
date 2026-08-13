@@ -27,7 +27,7 @@ Python 3.10+ / discord.py 2.3+. 키워드 매칭 → Claude 폴백의 2단 구�
 | `test_faq_matching.py` | faq.md 매칭 회귀 테스트 (의존성 0, `python`으로 바로 실행) |
 | `test_llm_interface.py` | LLM 백엔드 인터페이스 회귀 테스트 (의존성 0, `python`으로 바로 실행) |
 | `test_channel_limit.py` | 질문 채널 제한 회귀 테스트 (discord 패키지 필요 — `bot.py`를 import함) |
-| `faq.md` | FAQ 데이터. 현재 9개 카테고리 / 66개 항목 |
+| `faq.md` | FAQ 데이터. 현재 9개 카테고리 / 71개 항목 |
 | `deploy/` | 오라클 서버 배포 세트 (systemd, setup.sh, update.sh, lib.sh, DEPLOY.md) |
 
 ### 핵심 설계

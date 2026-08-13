@@ -28,7 +28,7 @@ Python 3.10+ / discord.py 2.3+. 키워드 매칭 → Claude 폴백의 2단 구�
 | `test_llm_interface.py` | LLM 백엔드 인터페이스 회귀 테스트 (의존성 0, `python`으로 바로 실행) |
 | `test_channel_limit.py` | 질문 채널 제한 회귀 테스트 (discord 패키지 필요 — `bot.py`를 import함) |
 | `faq.md` | FAQ 데이터. 현재 9개 카테고리 / 66개 항목 |
-| `deploy/` | 오라클 서버 배포 세트 (systemd, setup.sh, update.sh, DEPLOY.md) |
+| `deploy/` | 오라클 서버 배포 세트 (systemd, setup.sh, update.sh, lib.sh, DEPLOY.md) |
 
 ### 핵심 설계
 
@@ -90,6 +90,14 @@ Python 3.10+ / discord.py 2.3+. 키워드 매칭 → Claude 폴백의 2단 구�
 
 - 서버 접속 후 `bash deploy/setup.sh` 하나로 설치 완료 (여러 번 실행해도 안전)
 - 코드 갱신은 `bash deploy/update.sh`
+- 재시작 성공 판정은 `deploy/lib.sh`의 `wait_until_ready()` 한 곳에 있다.
+  **`systemctl is-active`만으로 판정하면 안 된다** — 디스코드 로그인까지 5~15초가
+  걸려서, 토큰이 틀려 뜨자마자 죽는 봇도 그 순간엔 active로 보인다(재시작 루프).
+  재시작 시각 이후 저널에서 `로그인 성공`이 찍히기를 기다리는 방식이다.
+  bot.py의 기동 문구를 바꾸면 `READY_PATTERN`도 같이 고칠 것
+- **배포 로그로 현재 설정을 판단하지 말 것.** 예전 `journalctl -n 15`는 새 기동
+  로그가 찍히기 전에 실행돼 *직전 기동*의 값을 보여줬다. 실제로 이걸 보고
+  채널 제한이 안 걸린 줄 착각한 적이 있다. 지금은 `--since`로 이번 기동만 본다
 - `.github/workflows/deploy.yml` — main 푸시 시 SSH로 `update.sh` 실행.
   시크릿(`ORACLE_HOST`/`ORACLE_SSH_KEY`)이 없으면 **실패가 아니라 skip**한다
   (미설정 상태의 빨간 X와 진짜 배포 실패를 구분하기 위해).

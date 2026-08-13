@@ -185,6 +185,9 @@ journalctl -u faq-bot -f
 ## 6. 평소 운영 명령어
 
 ```bash
+# 현재 설정 확인 (FAQ 개수·질문 채널 등)
+journalctl -u faq-bot -n 40 --no-pager | grep -E "로그인 성공|질문 채널|운영진 채널"
+
 # 상태 확인
 systemctl status faq-bot
 

@@ -22,6 +22,9 @@ VENV_DIR="$PROJECT_DIR/.venv"
 RUN_USER="$(id -un)"
 RUN_GROUP="$(id -gn)"
 
+# 봇이 실제로 떴는지 확인하는 헬퍼 (wait_until_ready / restart_mark / show_startup_log)
+source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
+
 info()  { printf '\n\033[1;36m==> %s\033[0m\n' "$*"; }
 ok()    { printf '    \033[1;32m✔\033[0m %s\n' "$*"; }
 warn()  { printf '    \033[1;33m!\033[0m %s\n' "$*"; }
@@ -181,19 +184,22 @@ if [ "$NEEDS_TOKEN" = "1" ]; then
 
 EOF
 else
+    SINCE="$(restart_mark)"
     sudo systemctl restart "$SERVICE_NAME"
-    sleep 3
-    if systemctl is-active --quiet "$SERVICE_NAME"; then
-        ok "봇이 실행 중입니다!"
+    printf '    디스코드 로그인 대기 중 (최대 %s초)...\n' "$READY_TIMEOUT"
+    if wait_until_ready "$SERVICE_NAME" "$SINCE"; then
+        ok "봇이 디스코드에 로그인했습니다!"
+        echo
+        show_startup_log "$SERVICE_NAME" "$SINCE"
         echo
         echo "  로그 보기 : journalctl -u $SERVICE_NAME -f"
         echo "  재시작    : sudo systemctl restart $SERVICE_NAME"
         echo "  중지      : sudo systemctl stop $SERVICE_NAME"
         echo
     else
-        warn "봇이 시작되지 못했습니다. 아래 로그를 확인하세요:"
+        warn "봇이 정상 기동하지 못했습니다. 이번 기동 로그:"
         echo
-        sudo journalctl -u "$SERVICE_NAME" -n 30 --no-pager
+        show_startup_log "$SERVICE_NAME" "$SINCE"
         exit 1
     fi
 fi

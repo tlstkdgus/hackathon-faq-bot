@@ -55,22 +55,35 @@ def log_miss(question: str, handled_by: str, user_id: int | None = None) -> None
     _append(MISS_LOG_FILE, f"{_now()}\t[{handled_by}]\t{who}\t{safe}\n", "로그 기록")
 
 
-def log_usage(user_id: int, category: str) -> None:
-    """모든 질문을 통계용으로 기록한다 (질문 본문 없이 사용자ID + 결과만 → 가볍고 프라이버시 최소화).
+def log_usage(user_id: int, category: str, question: str = "") -> None:
+    """모든 질문을 기록한다. stats.log가 질문의 전체 기록이 된다.
 
     category: 'hit:<주제명>'(키워드 매칭 성공) / 백엔드 이름('openai'·'claude') / 'nomatch'(둘 다 실패)
+
+    예전에는 질문 본문 없이 사용자ID + 결과만 남겼다. 그래서 키워드로 답한
+    질문은 "누가 어떤 주제를 물었다"까지만 알 수 있고 문장은 복원할 수 없었다.
+    행사 회고와 다음 기수 FAQ 준비에 원문이 필요하다는 판단으로 함께 남긴다.
+    (학생 공지에 "질문 내용과 질문한 사람이 기록된다"고 이미 안내돼 있다.)
+
+    unanswered.log와 겹치는 부분이 생기지만, 그쪽은 '키워드가 못 잡은 질문'만
+    모아 digest가 읽는 파일이라 목적이 다르다. 여기는 전수 기록이다.
     """
-    _append(STATS_LOG_FILE, f"{_now()}\t{user_id}\t{category}\n", "통계 기록")
+    # 질문에 줄바꿈/탭이 들어오면 로그 한 줄이 깨지므로 공백으로 바꿔서 저장한다.
+    safe = " ".join(question.split())
+    _append(STATS_LOG_FILE, f"{_now()}\t{user_id}\t{category}\t{safe}\n", "통계 기록")
 
 
-def search_questions(keyword: str = "", limit: int = 30) -> list:
-    """unanswered.log에서 질문을 찾아 (시각, 처리주체, 사용자ID, 질문) 목록으로 돌려준다.
+def search_questions(keyword: str = "", limit: int = 30, misses_only: bool = False) -> list:
+    """질문을 찾아 (시각, 처리주체, 사용자ID, 질문) 목록으로 돌려준다.
 
+    기본은 stats.log(전수 기록)를 본다. misses_only=True면 unanswered.log만 본다.
     keyword가 비어 있으면 최근 것부터 전부. 대소문자·공백은 무시하고 비교한다.
-    사용자ID가 없던 시절에 쌓인 줄은 user_id가 None으로 나온다.
+
+    원문이 없던 시절에 쌓인 줄은 question이 빈 문자열로 나온다.
     """
+    path = MISS_LOG_FILE if misses_only else STATS_LOG_FILE
     try:
-        with open(MISS_LOG_FILE, "r", encoding="utf-8") as f:
+        with open(path, "r", encoding="utf-8") as f:
             lines = f.readlines()
     except FileNotFoundError:
         return []
@@ -79,37 +92,54 @@ def search_questions(keyword: str = "", limit: int = 30) -> list:
     out = []
     for line in lines:
         parts = line.rstrip("\n").split("\t")
-        if len(parts) == 3:
-            ts, handled, question = parts
-            user_id = None
-        elif len(parts) == 4:
-            ts, handled, raw_id, question = parts
-            user_id = None if raw_id == "-" else raw_id
+        if misses_only:
+            # unanswered.log — 3칸(구) / 4칸(신)
+            if len(parts) == 3:
+                ts, handled, question = parts
+                user_id = None
+            elif len(parts) == 4:
+                ts, handled, raw_id, question = parts
+                user_id = None if raw_id == "-" else raw_id
+            else:
+                continue
+            handled = handled.strip("[]")
         else:
-            continue
+            # stats.log — 3칸(구, 원문 없음) / 4칸(신)
+            if len(parts) == 3:
+                ts, user_id, handled = parts
+                question = ""
+            elif len(parts) == 4:
+                ts, user_id, handled, question = parts
+            else:
+                continue
+
         if needle and needle not in "".join(question.lower().split()):
             continue
-        out.append((ts, handled.strip("[]"), user_id, question))
+        out.append((ts, handled, user_id, question))
 
     # 최근 것이 위로 오게. 로그는 시간순으로 덧붙여지므로 뒤집으면 된다.
     out.reverse()
     return out[:limit]
 
 
-def format_questions_plain(rows: list) -> str:
+def format_questions_plain(rows: list, misses_only: bool = False) -> str:
     """search_questions() 결과를 터미널에서 보기 좋게."""
     if not rows:
         return "조건에 맞는 질문이 없어요."
     lines = []
     for ts, handled, user_id, question in rows:
         who = user_id or "기록 없음(사용자ID 도입 전)"
-        lines.append(f"{ts}  [{handled}]\n  질문   : {question}\n  사용자ID: {who}")
-    tail = (
-        "\n※ 사용자ID로 사람을 찾으려면 디스코드 설정 → 고급 → 개발자 모드를 켠 뒤\n"
-        "  서버 멤버 목록에서 검색하거나, 검색창에 ID를 붙여넣으세요.\n"
-        "※ 키워드로 바로 답한 질문은 원문이 저장되지 않습니다 (주제명만 stats.log에 남음)."
-    )
-    return "\n\n".join(lines) + "\n" + tail
+        # 원문이 없는 옛 기록은 그 사실을 분명히 알려준다.
+        # 빈칸으로 두면 "질문을 안 했다"처럼 읽힌다.
+        text = question or "(원문 미기록 — 원문 저장 도입 전)"
+        lines.append(f"{ts}  [{handled}]\n  질문   : {text}\n  사용자ID: {who}")
+    tail = [
+        "\n※ 사용자ID로 사람을 찾으려면 디스코드 설정 → 고급 → 개발자 모드를 켠 뒤",
+        "  서버 멤버 목록에서 검색하거나, 검색창에 ID를 붙여넣으세요.",
+    ]
+    if misses_only:
+        tail.append("※ 키워드로 못 잡은 질문만 보고 있습니다. 전체는 --전체 로 보세요.")
+    return "\n\n".join(lines) + "\n" + "\n".join(tail)
 
 
 def collect_stats() -> dict:
@@ -126,11 +156,15 @@ def collect_stats() -> dict:
     total = 0  # 형식이 올바른 줄만 센다 (아래 주석 참고)
 
     for line in lines:
+        # 3칸(구): 시각 / 사용자ID / 결과
+        # 4칸(신): 시각 / 사용자ID / 결과 / 질문 원문
+        # 질문 원문이 추가되기 전에 쌓인 줄도 그대로 집계해야 한다.
+        # 3칸만 받으면 기존 기록이 통째로 버려져 통계가 조용히 0으로 나온다.
         parts = line.rstrip("\n").split("\t")
-        if len(parts) != 3:
+        if len(parts) not in (3, 4):
             continue
         total += 1
-        _, user_id, category = parts
+        user_id, category = parts[1], parts[2]
         users.add(user_id)
         if category.startswith("hit:"):
             hit += 1

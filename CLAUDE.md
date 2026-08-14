@@ -27,6 +27,7 @@ Python 3.10+ / discord.py 2.3+. 키워드 매칭 → Claude 폴백의 2단 구�
 | `test_faq_matching.py` | faq.md 매칭 회귀 테스트 (의존성 0, `python`으로 바로 실행) |
 | `test_llm_interface.py` | LLM 백엔드 인터페이스 회귀 테스트 (의존성 0, `python`으로 바로 실행) |
 | `test_channel_limit.py` | 질문 채널 제한 회귀 테스트 (discord 패키지 필요 — `bot.py`를 import함) |
+| `test_stats_logging.py` | 질문 기록·집계 회귀 테스트 (구/신 로그 형식 혼재 대응, 의존성 0) |
 | `faq.md` | FAQ 데이터. 현재 9개 카테고리 / 71개 항목 |
 | `deploy/` | 오라클 서버 배포 세트 (systemd, setup.sh, update.sh, lib.sh, DEPLOY.md) |
 
@@ -162,10 +163,16 @@ pytest가 있으면 그것으로도 돌아간다.
 - `DISCORD_TOKEN`, `ANTHROPIC_API_KEY`는 절대 커밋 금지.
   `.env`는 `.gitignore`에 있고, `.env.example`은 값이 빈 채로 커밋한다
 - `stats.log` / `unanswered.log`도 커밋 금지 (학생 질문 본문·사용자 ID 포함)
-- `unanswered.log`는 `시각 / [처리주체] / 사용자ID / 질문` 4칸이다. 사용자ID가 없던
-  시절의 3칸 줄도 남아 있을 수 있으므로 `digest._parse_line`은 둘 다 받는다.
-  칸 수를 바꿀 땐 이 파서를 같이 고칠 것 — 형식이 안 맞는 줄은 조용히 버려져서
-  리포트가 "미답변 0건"으로 나가고, 아무도 이상하다고 느끼지 못한다
+- **로그 형식을 바꿀 땐 읽는 쪽을 같이 고칠 것.** 형식이 안 맞는 줄은 에러 없이
+  버려져서, 통계가 0으로 나가거나 리포트가 "미답변 0건"으로 나가도 아무도
+  이상하다고 느끼지 못한다. 실제로 두 번 겪었다. `test_stats_logging.py`가
+  구/신 형식이 섞인 로그를 읽는지 고정하고 있다
+  - `stats.log` = `시각 / 사용자ID / 결과 / 질문 원문` 4칸 (전수 기록).
+    원문이 없던 3칸 줄도 있으므로 `collect_stats`·`search_questions`가 둘 다 받는다
+  - `unanswered.log` = `시각 / [처리주체] / 사용자ID / 질문` 4칸 (키워드가 못 잡은
+    질문만, digest가 읽는다). 사용자ID가 없던 3칸 줄도 `digest._parse_line`이 받는다
+  - 두 파일에 질문이 중복 저장되지만 목적이 다르다 — stats.log는 전수 기록,
+    unanswered.log는 키워드 보강용 작업 목록이다
 - `faq_engine.py`, `hours.py`, `stats_engine.py`, `claude_engine.py`는
   **discord 의존성이 없게 유지할 것** (단독 테스트 가능해야 함)
 - 답변 엔진을 교체해도 `/해커톤주제`, `!리로드` 명령은 유지

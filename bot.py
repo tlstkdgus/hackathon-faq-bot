@@ -204,7 +204,7 @@ def build_reply(question: str, user_id: int) -> str:
     """
     entry = find_answer(question, faq_entries)
     if entry is not None:
-        log_usage(user_id, f"hit:{entry.title}")
+        log_usage(user_id, f"hit:{entry.title}", question)
         return clip(f"**📌 {entry.title}**\n{entry.answer}")
 
     # 키워드로 못 찾음 → LLM에게 넘김 (자연어로 이해 시도)
@@ -221,7 +221,7 @@ def build_reply(question: str, user_id: int) -> str:
             print(f"⚠️ LLM 답변 실패(모든 백엔드): {e}")
 
     log_miss(question, handled_by, user_id)
-    log_usage(user_id, handled_by)
+    log_usage(user_id, handled_by, question)
     return clip(reply)
 
 

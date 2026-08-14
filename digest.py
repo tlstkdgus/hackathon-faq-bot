@@ -76,6 +76,66 @@ _VERB_FRAGMENTS = {
 }
 
 
+# ── 마감 알림 ────────────────────────────────────────────────────
+#
+# faq.md에는 날짜가 박힌 답변이 많다. 마감이 지나도 문구를 안 고치면 봇이
+# 이미 끝난 일을 "지금 신청하세요"로 계속 안내한다. 학생은 틀린 줄 모르고,
+# 운영진도 매일 faq.md를 훑어보지는 않는다.
+#
+# 그래서 이미 매일 아침 운영진 채널로 나가는 이 리포트에 얹는다. 새 알림
+# 수단을 만들지 않아도 되고, 어차피 보는 곳에 뜬다.
+#
+# (날짜, 무슨 마감인지, 고쳐야 할 faq.md 항목)
+# 마감이 지난 뒤 REMIND_DAYS 동안 반복해서 뜨고, 그 뒤엔 조용해진다.
+# 상태 파일을 두지 않으려고 이렇게 했다 — "처리함" 표시를 관리할 만한
+# 무게의 기능이 아니고, 한 주 동안 못 보고 넘길 일도 없다.
+DEADLINES = [
+    (datetime.date(2026, 8, 14), "가비아 서버 신청 마감",
+     "가비아 서버 / 후원 툴 전체"),
+    (datetime.date(2026, 8, 17), "팀 정보 변경 폼 마감(23:59)",
+     "팀 정보 변경 폼 / 팀원 변경 / 팀명 변경 / 팀장 변경"),
+    (datetime.date(2026, 8, 20), "멘토링 기간 종료",
+     "멘토링 / 멘토링 Q&A / 1대1 세션"),
+    (datetime.date(2026, 8, 21), "결과물 제출 마감(09:59:59)",
+     "제출 항목 / 서류 심사 / 깃허브 제출 / 시연 영상 / IR Deck"),
+    (datetime.date(2026, 8, 24), "파이브스팟 쿠폰 사용 마감(24:00)",
+     "파이브스팟"),
+    (datetime.date(2026, 8, 25), "해커톤 당일",
+     "일정 / 등록 출입 / 부스 운영 / 행사 종료 시간 / 트랙 피칭 / 본선 토너먼트"),
+    (datetime.date(2026, 8, 28), "부스·플랫폼 투표 마감(23:59)",
+     "투표"),
+    (datetime.date(2026, 8, 28), "가비아 서버 일괄 삭제(23:59)",
+     "가비아 서버 / 가비아 서버 삭제"),
+]
+
+# 마감 당일부터 며칠간 알림을 띄울지.
+REMIND_DAYS = 7
+
+
+def deadline_notes(today: "datetime.date | None" = None) -> list:
+    """오늘 마감이거나 최근에 지난 마감을 알리는 줄들. 없으면 빈 리스트.
+
+    날짜는 한국시간 기준으로 본다. 서버 시간대가 UTC라 그냥 date.today()를
+    쓰면 한국 기준 자정~09시 사이에 하루 전 날짜로 판단한다.
+    """
+    today = today or datetime.datetime.now(KST).date()
+    out = []
+    for when, what, targets in DEADLINES:
+        passed = (today - when).days
+        if passed < 0 or passed > REMIND_DAYS:
+            continue
+        when_txt = "오늘" if passed == 0 else f"{passed}일 지남"
+        out.append(f"   • {when:%m/%d} **{what}** ({when_txt})\n     └ 확인할 항목: {targets}")
+    if not out:
+        return []
+    return [
+        "⏰ **마감이 지난 안내가 있어요 — faq.md 확인이 필요합니다**",
+        *out,
+        "   문구를 고친 뒤 브랜치 → PR로 올려주세요 (`!리로드`는 서버 파일만 다시 읽습니다).",
+        "",
+    ]
+
+
 def _parse_line(line: str):
     """로그 한 줄 → (시각, 처리주체, 질문). 형식이 깨졌으면 None.
 
@@ -237,15 +297,23 @@ def analyze(questions: list, entries: list) -> list:
 
 
 def build_report(questions: list, entries: list, since=None, limit: int = MAX_GROUPS) -> str:
-    """디스코드로 보낼 요약 메시지를 만든다."""
+    """디스코드로 보낼 요약 메시지를 만든다.
+
+    마감 알림을 **맨 위에** 둔다. 디스코드 2000자를 넘으면 bot.clip()이 뒤를
+    잘라내는데, 미답변 질문이 많은 날 마감 알림이 잘려나가면 정작 시한이 있는
+    쪽을 놓친다.
+    """
+    lines = list(deadline_notes())
+
     if not questions:
-        return (
+        lines.append(
             "📊 **미답변 질문 리포트**\n"
             "지난 기간 동안 키워드로 못 잡은 질문이 없었어요. 👍"
         )
+        return "\n".join(lines)
 
     period = f" (기준: {since:%m/%d %H:%M} 이후)" if since else ""
-    lines = [
+    lines += [
         f"📊 **미답변 질문 리포트**{period}",
         f"총 **{len(questions)}건**이 키워드로 잡히지 않았어요.",
         "",

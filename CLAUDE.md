@@ -28,6 +28,7 @@ Python 3.10+ / discord.py 2.3+. 키워드 매칭 → Claude 폴백의 2단 구�
 | `test_llm_interface.py` | LLM 백엔드 인터페이스 회귀 테스트 (의존성 0, `python`으로 바로 실행) |
 | `test_channel_limit.py` | 질문 채널 제한 회귀 테스트 (discord 패키지 필요 — `bot.py`를 import함) |
 | `test_stats_logging.py` | 질문 기록·집계 회귀 테스트 (구/신 로그 형식 혼재 대응, 의존성 0) |
+| `test_deadline_notes.py` | 마감 알림 회귀 테스트 (윈도우에선 `tzdata` 필요) |
 | `faq.md` | FAQ 데이터. 현재 9개 카테고리 / 71개 항목 |
 | `deploy/` | 오라클 서버 배포 세트 (systemd, setup.sh, update.sh, lib.sh, DEPLOY.md) |
 
@@ -186,6 +187,11 @@ pytest가 있으면 그것으로도 돌아간다.
   의문형 조각(`어디예요`, `어디로`)도 같은 부류다. `test_faq_matching.py`가
   1글자 키워드 허용 목록과 중복 키워드를 지키고 있으니, 키워드를 늘린 뒤에는
   **반드시 `python test_faq_matching.py`를 돌릴 것**
+- **날짜가 박힌 답변은 마감이 지나면 틀린 안내가 된다.** `digest.DEADLINES`에
+  (날짜, 무슨 마감, 고쳐야 할 faq.md 항목)을 적어두면 마감 당일부터
+  `REMIND_DAYS`(7일) 동안 일일 리포트 맨 위에 알림이 뜬다. 새 마감이 생기면
+  여기에 한 줄 추가할 것. `test_deadline_notes.py`가 표에 적힌 항목 제목이
+  faq.md에 실제로 있는지 검사하므로, 항목 이름을 바꾸면 테스트가 잡아준다
 - `digest.py`는 **제안만 하고 faq.md를 직접 고치지 않는다.** 잘못된 키워드 하나가
   조용히 오답을 만들기 때문 (`감점`이 노코드 항목에 들어가 "AI 안 쓰면 감점?"을
   가로챈 전례가 있다). 자동 반영 기능을 넣자는 요청이 오면 이 위험을 먼저 설명할 것

@@ -26,7 +26,7 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(BASE_DIR))
 
-from digest import DEADLINES, REMIND_DAYS, build_report, deadline_notes
+from digest import DEADLINES, REMIND_DAYS, build_report, deadline_notes, stale_notice
 
 D = datetime.date
 
@@ -122,10 +122,65 @@ def test_deadline_note_goes_first():
     assert notes[0].startswith("⏰"), notes[0]
 
 
+# ── 학생 답변에 붙는 경고 (stale_notice) ─────────────────────────
+
+def test_no_notice_before_or_on_the_day():
+    """마감 당일까지는 안내가 아직 유효하다. 경고를 붙이면 틀린 말이 된다."""
+    assert stale_notice("가비아 서버", D(2026, 8, 13)) == ""
+    assert stale_notice("가비아 서버", D(2026, 8, 14)) == ""
+
+
+def test_notice_after_the_day():
+    got = stale_notice("가비아 서버", D(2026, 8, 15))
+    assert "8/14" in got and "가비아 서버 신청 마감" in got
+    assert got.endswith("\n\n"), "답변 본문과 줄이 붙으면 안 된다"
+
+
+def test_notice_never_expires():
+    """운영진 알림(REMIND_DAYS)과 달리 계속 떠야 한다.
+
+    마감이 지났다는 사실은 시간이 지나도 변하지 않고,
+    그 사이에도 학생은 같은 질문을 한다.
+    """
+    long_after = D(2026, 8, 14) + datetime.timedelta(days=REMIND_DAYS + 30)
+    assert stale_notice("가비아 서버", long_after) != ""
+
+
+def test_notice_picks_most_recent_deadline():
+    """한 항목이 여러 마감에 걸리면 가장 최근 것을 알린다.
+
+    '가비아 서버'는 8/14 신청 마감과 8/28 서버 삭제 두 번 걸린다.
+    오래된 쪽을 보여주면 이미 아는 얘기가 된다.
+    """
+    got = stale_notice("가비아 서버", D(2026, 8, 29))
+    assert "8/28" in got, got
+    assert "8/14" not in got, got
+
+
+def test_unrelated_entry_gets_nothing():
+    """마감과 무관한 항목에 경고가 붙으면 멀쩡한 답변이 의심스러워진다."""
+    for title in ("식사", "와이파이", "위치 교통"):
+        assert stale_notice(title, D(2026, 9, 30)) == ""
+
+
+def test_notice_targets_exist_in_faq():
+    """경고가 붙을 항목 제목이 faq.md에 실제로 있어야 한다.
+
+    (deadline_notes와 같은 표를 쓰므로 한 번 더 확인하는 셈이지만,
+     stale_notice는 제목 완전일치로 찾기 때문에 여기서도 고정해둔다.)
+    """
+    from faq_engine import load_faq
+    from paths import FAQ_FILE
+
+    titles = {e.title for e in load_faq(str(FAQ_FILE))}
+    hit = [t for _, _, targets in DEADLINES
+           for t in (x.strip() for x in targets.split("/")) if t in titles]
+    assert hit, "DEADLINES의 항목이 하나도 faq.md와 안 맞는다"
+
+
 if __name__ == "__main__":
     if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
         sys.stdout.reconfigure(encoding="utf-8")
-
     tests = [(n, f) for n, f in sorted(globals().items())
              if n.startswith("test_") and callable(f)]
     failed = []

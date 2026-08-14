@@ -126,6 +126,8 @@ def deadline_notes(today: "datetime.date | None" = None) -> list:
             continue
         when_txt = "오늘" if passed == 0 else f"{passed}일 지남"
         out.append(f"   • {when:%m/%d} **{what}** ({when_txt})\n     └ 확인할 항목: {targets}")
+    # 학생 답변에는 stale_notice()가 경고를 붙여 공백을 메우고 있지만,
+    # 그건 임시 방편이라 문구 자체는 사람이 고쳐야 한다.
     if not out:
         return []
     return [
@@ -134,6 +136,45 @@ def deadline_notes(today: "datetime.date | None" = None) -> list:
         "   문구를 고친 뒤 브랜치 → PR로 올려주세요 (`!리로드`는 서버 파일만 다시 읽습니다).",
         "",
     ]
+
+
+def _targets_of(targets: str) -> list:
+    """'가비아 서버 / 후원 툴 전체' → ['가비아 서버', '후원 툴 전체']"""
+    return [t.strip() for t in targets.split("/")]
+
+
+def stale_notice(title: str, today: "datetime.date | None" = None) -> str:
+    """이 항목이 지난 일정을 안내하고 있으면 답변 맨 위에 붙일 경고. 없으면 빈 문자열.
+
+    운영진이 faq.md 문구를 고칠 때까지의 공백을 메운다. 그 사이에도 학생은
+    같은 질문을 하고, 지금은 끝난 일을 "지금 신청하세요"로 그대로 받는다.
+
+    faq.md를 봇이 직접 고치지 않는 이유는 digest.py 맨 위 주석과 같다 —
+    날짜 한 줄만 바꿔서 될 일이 아니라 그 아래 절차 설명까지 통째로 의미가
+    없어지는데, 그걸 기계가 판단해 다시 쓰게 하면 마감·금액 같은 정보에서
+    틀린 문장이 조용히 학생에게 나간다. 그래서 원문은 그대로 두고
+    '지났다'는 사실만 덧붙인다. 날짜 비교뿐이라 틀릴 여지가 없다.
+
+    deadline_notes(운영진 알림)와 달리 REMIND_DAYS로 끊지 않는다.
+    마감이 지났다는 사실은 시간이 지나도 변하지 않기 때문이다.
+    """
+    today = today or datetime.datetime.now(KST).date()
+    passed = [
+        (when, what)
+        for when, what, targets in DEADLINES
+        if today > when and title in _targets_of(targets)
+    ]
+    if not passed:
+        return ""
+    # 여러 개가 지났으면 가장 최근 것을 알린다 (예: 가비아 서버는 신청 마감과
+    # 서버 삭제 두 번 걸린다). 오래된 쪽을 보여주면 이미 아는 얘기가 된다.
+    when, what = max(passed)
+    # 조사('이/가')를 붙이지 않는다. what의 받침에 따라 달라지는데
+    # ('마감'→이, '종료'→가) 표에 뭐가 들어올지 모르니 아예 피한다.
+    return (
+        f"⚠️ **{when.month}/{when.day} · {what} — 이미 지난 일정이에요.**\n"
+        "아래 안내에 끝난 내용이 섞여 있을 수 있으니 최신 정보는 운영진에게 확인해주세요.\n\n"
+    )
 
 
 def _parse_line(line: str):

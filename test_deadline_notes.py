@@ -67,8 +67,13 @@ def test_deadline_targets_point_at_real_faq_entries():
 # ── 날짜 경계 ────────────────────────────────────────────────────
 
 def test_nothing_before_the_deadline():
-    """마감 전에는 뜨지 않는다. 아직 유효한 안내를 고치라고 하면 안 된다."""
-    assert deadline_notes(D(2026, 8, 16)) == []
+    """마감 전에는 뜨지 않는다. 아직 유효한 안내를 고치라고 하면 안 된다.
+
+    기준 날짜를 DEADLINES에서 끌어온다. 날짜를 박아두면 더 이른 마감이
+    추가될 때마다 무고하게 실패한다 (실제로 가비아 8/14를 넣자 깨졌다).
+    """
+    earliest = min(when for when, _, _ in DEADLINES)
+    assert deadline_notes(earliest - datetime.timedelta(days=1)) == []
 
 
 def test_shows_on_the_day():

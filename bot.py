@@ -205,7 +205,10 @@ def build_reply(question: str, user_id: int) -> str:
     entry = find_answer(question, faq_entries)
     if entry is not None:
         log_usage(user_id, f"hit:{entry.title}", question)
-        return clip(f"**📌 {entry.title}**\n{entry.answer}")
+        # 지난 일정을 안내하는 항목이면 경고를 맨 위에 붙인다.
+        # 운영진이 faq.md를 고칠 때까지 학생이 끝난 안내를 그대로 받는 걸 막는다.
+        # (날짜 비교뿐이라 LLM이 끼어들지 않는다 — digest.stale_notice 참고)
+        return clip(f"**📌 {entry.title}**\n{digest.stale_notice(entry.title)}{entry.answer}")
 
     # 키워드로 못 찾음 → LLM에게 넘김 (자연어로 이해 시도)
     handled_by = "nomatch"

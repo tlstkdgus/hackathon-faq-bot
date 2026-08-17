@@ -29,7 +29,7 @@ Python 3.10+ / discord.py 2.3+. 키워드 매칭 → Claude 폴백의 2단 구�
 | `test_channel_limit.py` | 질문 채널 제한 회귀 테스트 (discord 패키지 필요 — `bot.py`를 import함) |
 | `test_stats_logging.py` | 질문 기록·집계 회귀 테스트 (구/신 로그 형식 혼재 대응, 의존성 0) |
 | `test_deadline_notes.py` | 마감 알림 회귀 테스트 (윈도우에선 `tzdata` 필요) |
-| `faq.md` | FAQ 데이터. 현재 9개 카테고리 / 71개 항목 |
+| `faq.md` | FAQ 데이터. 현재 9개 카테고리 / 72개 항목 |
 | `deploy/` | 오라클 서버 배포 세트 (systemd, setup.sh, update.sh, lib.sh, DEPLOY.md) |
 
 ### 핵심 설계

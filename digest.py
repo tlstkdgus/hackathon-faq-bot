@@ -111,6 +111,20 @@ DEADLINES = [
 # 마감 당일부터 며칠간 알림을 띄울지.
 REMIND_DAYS = 7
 
+# 이미 faq.md 문구를 고친 마감. 여기 적으면 운영진 알림과 학생 경고가 둘 다 멈춘다.
+#
+# 왜 자동 판정을 안 하나: "문구가 고쳐졌는지"를 기계가 판단하려면 결국 문장을
+# 읽어야 하고, 그건 이 파일이 처음부터 피해온 방식이다. 대신 사람이 고친 뒤
+# 여기에 한 줄 적는다.
+#
+# 안 적으면 어떻게 되나: 알림이 계속 뜬다(운영진은 REMIND_DAYS 뒤 조용해지고,
+# 학생 경고는 계속). 이미 고친 안내에 "지났어요"가 덧붙는 정도라 위험하지는
+# 않지만, 매번 뜨면 진짜 알림까지 무시하게 되므로 고쳤으면 적어두는 게 좋다.
+RESOLVED = {
+    (datetime.date(2026, 8, 14), "가비아 서버 신청 마감"),
+    (datetime.date(2026, 8, 17), "팀 정보 변경 폼 마감(23:59)"),
+}
+
 
 def deadline_notes(today: "datetime.date | None" = None) -> list:
     """오늘 마감이거나 최근에 지난 마감을 알리는 줄들. 없으면 빈 리스트.
@@ -121,6 +135,8 @@ def deadline_notes(today: "datetime.date | None" = None) -> list:
     today = today or datetime.datetime.now(KST).date()
     out = []
     for when, what, targets in DEADLINES:
+        if (when, what) in RESOLVED:
+            continue  # 문구를 이미 고쳤다 — 더 알릴 게 없다
         passed = (today - when).days
         if passed < 0 or passed > REMIND_DAYS:
             continue
@@ -162,7 +178,9 @@ def stale_notice(title: str, today: "datetime.date | None" = None) -> str:
     passed = [
         (when, what)
         for when, what, targets in DEADLINES
-        if today > when and title in _targets_of(targets)
+        if today > when
+        and (when, what) not in RESOLVED   # 문구를 이미 고쳤으면 경고할 게 없다
+        and title in _targets_of(targets)
     ]
     if not passed:
         return ""

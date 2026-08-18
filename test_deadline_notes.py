@@ -26,7 +26,7 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(BASE_DIR))
 
-from digest import DEADLINES, REMIND_DAYS, build_report, deadline_notes, stale_notice
+from digest import DEADLINES, REMIND_DAYS, RESOLVED, build_report, deadline_notes, stale_notice
 
 D = datetime.date
 
@@ -76,23 +76,36 @@ def test_nothing_before_the_deadline():
     assert deadline_notes(earliest - datetime.timedelta(days=1)) == []
 
 
+def _pending():
+    """아직 문구를 안 고친(RESOLVED에 없는) 마감. 날짜순 첫 번째.
+
+    날짜를 박아두면 그 마감을 RESOLVED로 옮길 때마다 무고하게 실패한다
+    (실제로 8/17을 반영 표시하자 깨졌다).
+    """
+    return next((w, x, t) for w, x, t in DEADLINES if (w, x) not in RESOLVED)
+
+
 def test_shows_on_the_day():
-    got = _joined(D(2026, 8, 17))
-    assert "팀 정보 변경 폼 마감" in got
+    when, what, targets = _pending()
+    got = _joined(when)
+    assert what in got
     assert "오늘" in got
-    assert "팀명 변경" in got, "고쳐야 할 항목이 함께 나와야 한다"
+    first_target = targets.split("/")[0].strip()
+    assert first_target in got, "고쳐야 할 항목이 함께 나와야 한다"
 
 
 def test_shows_within_remind_window():
-    got = _joined(D(2026, 8, 17) + datetime.timedelta(days=REMIND_DAYS))
-    assert "팀 정보 변경 폼 마감" in got
+    when, what, _ = _pending()
+    got = _joined(when + datetime.timedelta(days=REMIND_DAYS))
+    assert what in got
     assert f"{REMIND_DAYS}일 지남" in got
 
 
 def test_quiet_after_remind_window():
     """계속 뜨면 리포트가 시끄러워지고 진짜 알림을 덮는다."""
-    got = _joined(D(2026, 8, 17) + datetime.timedelta(days=REMIND_DAYS + 1))
-    assert "팀 정보 변경 폼 마감" not in got
+    when, what, _ = _pending()
+    got = _joined(when + datetime.timedelta(days=REMIND_DAYS + 1))
+    assert what not in got
 
 
 def test_multiple_deadlines_on_same_day():
@@ -126,13 +139,17 @@ def test_deadline_note_goes_first():
 
 def test_no_notice_before_or_on_the_day():
     """마감 당일까지는 안내가 아직 유효하다. 경고를 붙이면 틀린 말이 된다."""
-    assert stale_notice("가비아 서버", D(2026, 8, 13)) == ""
-    assert stale_notice("가비아 서버", D(2026, 8, 14)) == ""
+    when, what, targets = _pending()
+    title = targets.split("/")[0].strip()
+    assert what not in stale_notice(title, when - datetime.timedelta(days=1))
+    assert what not in stale_notice(title, when)
 
 
 def test_notice_after_the_day():
-    got = stale_notice("가비아 서버", D(2026, 8, 15))
-    assert "8/14" in got and "가비아 서버 신청 마감" in got
+    when, what, targets = _pending()
+    title = targets.split("/")[0].strip()
+    got = stale_notice(title, when + datetime.timedelta(days=1))
+    assert f"{when.month}/{when.day}" in got and what in got, got
     assert got.endswith("\n\n"), "답변 본문과 줄이 붙으면 안 된다"
 
 
@@ -176,6 +193,38 @@ def test_notice_targets_exist_in_faq():
     hit = [t for _, _, targets in DEADLINES
            for t in (x.strip() for x in targets.split("/")) if t in titles]
     assert hit, "DEADLINES의 항목이 하나도 faq.md와 안 맞는다"
+
+
+# ── 반영 완료 표시 (RESOLVED) ────────────────────────────────────
+
+def test_resolved_entries_exist_in_deadlines():
+    """RESOLVED에 오타가 있으면 조용히 안 걸린다.
+
+    (날짜, 설명) 문자열을 손으로 옮겨 적는 구조라 오타가 나기 쉽고,
+    틀리면 '표시했는데 알림이 계속 뜨는' 상태가 된다.
+    """
+    known = {(when, what) for when, what, _ in DEADLINES}
+    unknown = [r for r in RESOLVED if r not in known]
+    assert not unknown, f"DEADLINES에 없는 항목을 RESOLVED에 적었다: {unknown}"
+
+
+def test_resolved_stops_both_alerts():
+    """문구를 고쳤으면 운영진 알림과 학생 경고가 둘 다 멈춰야 한다."""
+    for when, what in RESOLVED:
+        day = when + datetime.timedelta(days=1)
+        assert what not in _joined(day), f"운영진 알림이 계속 뜬다: {what}"
+        targets = next(t for w, x, t in DEADLINES if (w, x) == (when, what))
+        for title in (x.strip() for x in targets.split("/")):
+            got = stale_notice(title, day)
+            assert what not in got, f"학생 경고가 계속 뜬다: {title} -> {got}"
+
+
+def test_unresolved_still_alerts():
+    """RESOLVED가 다른 마감까지 덮으면 안 된다."""
+    pending = [(w, x) for w, x, _ in DEADLINES if (w, x) not in RESOLVED]
+    assert pending, "표에 미반영 마감이 하나도 없다 (테스트가 의미를 잃었다)"
+    when, what = pending[0]
+    assert what in _joined(when)
 
 
 if __name__ == "__main__":

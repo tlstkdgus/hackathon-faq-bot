@@ -123,6 +123,7 @@ REMIND_DAYS = 7
 RESOLVED = {
     (datetime.date(2026, 8, 14), "가비아 서버 신청 마감"),
     (datetime.date(2026, 8, 17), "팀 정보 변경 폼 마감(23:59)"),
+    (datetime.date(2026, 8, 21), "결과물 제출 마감(09:59:59)"),
 }
 
 

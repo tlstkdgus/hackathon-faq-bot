@@ -109,9 +109,22 @@ def test_quiet_after_remind_window():
 
 
 def test_multiple_deadlines_on_same_day():
-    """가까운 마감이 겹치면 둘 다 보여야 한다 (8/20 멘토링 + 8/21 제출)."""
-    got = _joined(D(2026, 8, 21))
-    assert "멘토링 기간 종료" in got and "결과물 제출 마감" in got
+    """가까운 마감이 겹치면 한 리포트에 둘 다 보여야 한다.
+
+    날짜를 박지 않고 표에서 끌어온다. 마감을 RESOLVED로 옮길 때마다
+    무고하게 실패하기 때문이다 (실제로 8/20 멘토링을 옮기자 깨졌다).
+    """
+    pending = [(w, x) for w, x, _ in DEADLINES if (w, x) not in RESOLVED]
+    assert len(pending) >= 2, "미반영 마감이 2개 미만이라 검사할 수 없다"
+    pair = next(
+        ((a, b) for a in pending for b in pending
+         if a[0] < b[0] <= a[0] + datetime.timedelta(days=REMIND_DAYS)),
+        None,
+    )
+    assert pair, "가까운 마감 쌍이 없다"
+    (_, first), (later, second) = pair
+    got = _joined(later)
+    assert first in got and second in got, got
 
 
 # ── 리포트에 실리는지 ────────────────────────────────────────────

@@ -112,7 +112,8 @@ def test_multiple_deadlines_on_same_day():
     """가까운 마감이 겹치면 한 리포트에 둘 다 보여야 한다.
 
     날짜를 박지 않고 표에서 끌어온다. 마감을 RESOLVED로 옮길 때마다
-    무고하게 실패하기 때문이다 (실제로 8/21 제출 마감을 옮기자 깨졌다).
+    무고하게 실패하기 때문이다 (8/20 멘토링과 8/21 제출 마감을 옮길 때
+    각각 깨졌다).
     """
     pending = [(w, x) for w, x, _ in DEADLINES if (w, x) not in RESOLVED]
     assert len(pending) >= 2, "미반영 마감이 2개 미만이라 검사할 수 없다"
@@ -143,9 +144,14 @@ def test_report_shows_deadline_even_with_no_questions():
 
 
 def test_deadline_note_goes_first():
-    """2000자를 넘으면 뒤가 잘리므로 마감 알림이 맨 위에 있어야 한다."""
-    notes = deadline_notes(D(2026, 8, 21))
-    assert notes, "8/21에는 알림이 있어야 한다"
+    """2000자를 넘으면 뒤가 잘리므로 마감 알림이 맨 위에 있어야 한다.
+
+    기준 날짜를 박아두면 그 마감을 RESOLVED로 옮길 때마다 무고하게 실패한다
+    (8/21 제출 마감을 반영 표시하자 실제로 깨졌다). 표에서 끌어온다.
+    """
+    when, what, _ = _pending()
+    notes = deadline_notes(when)
+    assert notes, f"{when}에는 알림이 있어야 한다"
     assert notes[0].startswith("⏰"), notes[0]
 
 

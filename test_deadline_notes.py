@@ -76,13 +76,31 @@ def test_nothing_before_the_deadline():
     assert deadline_notes(earliest - datetime.timedelta(days=1)) == []
 
 
-def _pending():
-    """아직 문구를 안 고친(RESOLVED에 없는) 마감. 날짜순 첫 번째.
+# 알림 동작을 시험하려면 '아직 문구를 안 고친 마감'이 하나는 있어야 한다.
+# 그걸 실제 표에서 끌어오면 마감을 RESOLVED로 옮길 때마다 테스트가 무고하게
+# 깨진다 — 8/17, 8/20, 8/21에 이어 **행사가 끝나 전부 반영한 날 또 깨졌다**
+# (그때는 남은 마감이 0개라 StopIteration).
+#
+# 알림 로직은 표에 뭐가 들어 있든 똑같이 동작해야 하므로, 표를 읽지 않고
+# 시험용 마감을 넣어 본다. 이제 어떤 마감을 반영 표시해도 깨지지 않는다.
+# 날짜를 2099년으로 두는 이유: 실제 마감과 REMIND_DAYS 안에서 겹치면
+# 리포트에 함께 실려 검사가 흔들린다.
+# 둘이 **같은 항목**을 가리킨다. 한 항목에 마감이 두 번 걸리는 경우
+# (가장 최근 것만 알린다)를 검사해야 하기 때문이다.
+# '부스 꾸미기'를 쓰는 이유: faq.md에 실재하면서 실제 마감 표에는
+# 걸려 있지 않아, 진짜 마감과 섞여 검사가 흔들리지 않는다.
+_FIXTURE = [
+    (D(2099, 1, 1), "시험용 마감 A", "부스 꾸미기"),
+    (D(2099, 1, 3), "시험용 마감 B", "부스 꾸미기"),
+]
+for _e in _FIXTURE:
+    if _e not in DEADLINES:
+        DEADLINES.append(_e)
 
-    날짜를 박아두면 그 마감을 RESOLVED로 옮길 때마다 무고하게 실패한다
-    (실제로 8/17을 반영 표시하자 깨졌다).
-    """
-    return next((w, x, t) for w, x, t in DEADLINES if (w, x) not in RESOLVED)
+
+def _pending():
+    """알림이 떠야 하는 시험용 마감."""
+    return _FIXTURE[0]
 
 
 def test_shows_on_the_day():
@@ -112,10 +130,13 @@ def test_multiple_deadlines_on_same_day():
     """가까운 마감이 겹치면 한 리포트에 둘 다 보여야 한다.
 
     날짜를 박지 않고 표에서 끌어온다. 마감을 RESOLVED로 옮길 때마다
-    무고하게 실패하기 때문이다 (실제로 8/20 멘토링을 옮기자 깨졌다).
+    무고하게 실패하기 때문이다 (8/20 멘토링과 8/21 제출 마감을 옮길 때
+    각각 깨졌다).
     """
     pending = [(w, x) for w, x, _ in DEADLINES if (w, x) not in RESOLVED]
     assert len(pending) >= 2, "미반영 마감이 2개 미만이라 검사할 수 없다"
+    # 시험용 마감 두 개가 항상 들어 있으므로 표가 다 반영돼도 검사할 수 있다.
+    # REMIND_DAYS 안에 함께 걸리는 두 마감을 찾는다
     pair = next(
         ((a, b) for a in pending for b in pending
          if a[0] < b[0] <= a[0] + datetime.timedelta(days=REMIND_DAYS)),
@@ -142,9 +163,14 @@ def test_report_shows_deadline_even_with_no_questions():
 
 
 def test_deadline_note_goes_first():
-    """2000자를 넘으면 뒤가 잘리므로 마감 알림이 맨 위에 있어야 한다."""
-    notes = deadline_notes(D(2026, 8, 21))
-    assert notes, "8/21에는 알림이 있어야 한다"
+    """2000자를 넘으면 뒤가 잘리므로 마감 알림이 맨 위에 있어야 한다.
+
+    기준 날짜를 박아두면 그 마감을 RESOLVED로 옮길 때마다 무고하게 실패한다
+    (8/21 제출 마감을 반영 표시하자 실제로 깨졌다). 표에서 끌어온다.
+    """
+    when, what, _ = _pending()
+    notes = deadline_notes(when)
+    assert notes, f"{when}에는 알림이 있어야 한다"
     assert notes[0].startswith("⏰"), notes[0]
 
 
@@ -172,19 +198,22 @@ def test_notice_never_expires():
     마감이 지났다는 사실은 시간이 지나도 변하지 않고,
     그 사이에도 학생은 같은 질문을 한다.
     """
-    long_after = D(2026, 8, 14) + datetime.timedelta(days=REMIND_DAYS + 30)
-    assert stale_notice("가비아 서버", long_after) != ""
+    when, _, target = _pending()
+    long_after = when + datetime.timedelta(days=REMIND_DAYS + 30)
+    assert stale_notice(target, long_after) != ""
 
 
 def test_notice_picks_most_recent_deadline():
     """한 항목이 여러 마감에 걸리면 가장 최근 것을 알린다.
 
-    '가비아 서버'는 8/14 신청 마감과 8/28 서버 삭제 두 번 걸린다.
-    오래된 쪽을 보여주면 이미 아는 얘기가 된다.
+    실제 표에서 끌어오면 그 마감들을 반영 표시할 때 깨진다
+    ('가비아 서버'가 8/14·8/28 두 번 걸렸는데, 둘 다 반영하자 깨졌다).
+    시험용 마감 두 개가 같은 항목을 가리키게 해두고 본다.
     """
-    got = stale_notice("가비아 서버", D(2026, 8, 29))
-    assert "8/28" in got, got
-    assert "8/14" not in got, got
+    (early, first, target), (late, second, _) = _FIXTURE
+    got = stale_notice(target, late + datetime.timedelta(days=1))
+    assert second in got, got
+    assert first not in got, got
 
 
 def test_unrelated_entry_gets_nothing():

@@ -5,6 +5,7 @@ faq_engine.py — faq.md 파일을 읽어서 키워드 매칭으로 답변을 �
 """
 
 import re
+import unicodedata
 from dataclasses import dataclass, field
 from difflib import SequenceMatcher
 
@@ -94,8 +95,14 @@ FUZZY_THRESHOLD = 0.82
 
 
 def _normalize(s: str) -> str:
-    """비교를 위해 소문자화 + 공백 제거."""
-    return re.sub(r"\s+", "", s.lower())
+    """비교를 위해 전각→반각 정규화 + 소문자화 + 공백 제거.
+
+    NFKC를 먼저 거치는 이유: 입력기 상태에 따라 전각 문자로 치는 학생이 있다.
+    실제로 `ＩＲＤＥＣＫ`(전각)가 어떤 항목에도 안 걸려 LLM으로 넘어간 적이
+    있는데, 눈으로는 `IRDECK`과 똑같아 보여서 왜 못 잡는지 알아내기 어렵다.
+    NFKC가 전각 영숫자·전각 공백·호환 한글 자모를 표준형으로 바꿔준다.
+    """
+    return re.sub(r"\s+", "", unicodedata.normalize("NFKC", s).lower())
 
 
 def _keyword_match_ratio(keyword_norm: str, q_norm: str) -> float:

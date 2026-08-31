@@ -108,6 +108,21 @@ def test_no_new_single_char_keywords():
     )
 
 
+def test_fullwidth_input_is_normalized():
+    """전각으로 친 질문도 반각과 똑같이 잡혀야 한다.
+
+    입력기 상태에 따라 전각 문자가 섞여 들어온다. 실제 운영 중
+    `ＩＲＤＥＣＫ`(전각)가 어떤 항목에도 안 걸려 LLM으로 넘어갔다.
+    눈으로는 `IRDECK`과 똑같아 보여서 원인을 찾기 어려운 종류의 문제다.
+    """
+    assert _normalize("ＩＲＤＥＣＫ") == "irdeck"
+    assert _normalize("１２３") == "123"
+    # 전각 공백도 공백으로 취급돼야 한다
+    assert _normalize("IR　Deck") == "irdeck"
+    # 반각과 결과가 같아야 한다
+    assert _normalize("ＩＲＤＥＣＫ") == _normalize("IR DECK")
+
+
 def test_no_new_duplicate_keywords():
     """같은 키워드가 여러 항목에 있으면 그 질문의 답이 불안정해진다."""
     owners = defaultdict(set)

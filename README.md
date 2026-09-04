@@ -15,7 +15,7 @@
 
 | 파일 | 역할 |
 |---|---|
-| `faq.md` | **질문/답변 데이터 — 운영진이 수정할 파일!** (9개 카테고리 / 72개 항목) |
+| `faq.md` | **질문/답변 데이터 — 운영진이 수정할 파일!** (9개 카테고리 / 78개 항목) |
 | `bot.py` | 봇 본체 (실행 파일) |
 | `faq_engine.py` | `faq.md` 파싱 + 키워드 매칭 |
 | `llm.py` | LLM 백엔드 스위치 + 백엔드 간 자동 폴백 + **공용 답변 규칙(프롬프트)** |
@@ -29,6 +29,7 @@
 | `requirements.txt` | 필요한 패키지 목록 |
 | `.env.example` | 환경변수 템플릿 (복사해서 `.env`로 사용) |
 | `deploy/` | 서버 배포 세트 — [배포 가이드](deploy/DEPLOY.md) |
+| `RETROSPECTIVE.md` | **14기 운영 회고** — 실제 질문 통계와 다음 기수 권고 |
 
 > `faq_engine` · `hours` · `stats_engine` · `digest` 는 discord 의존성이 없어
 > 봇을 띄우지 않고도 단독으로 실행·테스트할 수 있습니다.
@@ -100,7 +101,7 @@ python bot.py
 터미널에 아래처럼 뜨면 성공:
 ```
    /슬래시 커맨드 4개 동기화 완료
-✅ 로그인 성공: ... (FAQ 72개 로드, 답변 모드: 키워드 + openai (실패 시 claude 폴백))
+✅ 로그인 성공: ... (FAQ 78개 로드, 답변 모드: 키워드 + openai (실패 시 claude 폴백))
    질문 운영시간: 매일 24시간 언제나 (KST)
    FAQ 파일: /home/ubuntu/hackathon-faq-bot/faq.md
    로그 폴더: /home/ubuntu/hackathon-faq-bot
@@ -411,7 +412,7 @@ LLM_FALLBACK=claude    # 주 백엔드가 실패하면 여기로
 시작 로그에 현재 구성이 표시됩니다:
 
 ```
-✅ 로그인 성공: ... (FAQ 72개 로드, 답변 모드: 키워드 + openai (실패 시 claude 폴백))
+✅ 로그인 성공: ... (FAQ 78개 로드, 답변 모드: 키워드 + openai (실패 시 claude 폴백))
 ```
 
 통계(`/해커톤통계`)에는 **실제로 답한** 백엔드가 기록되므로, 폴백이 얼마나

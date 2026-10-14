@@ -1,0 +1,143 @@
+/* 색은 역할(role) 토큰으로만 쓴다. 라이트/다크 값은 여기서만 바뀐다.
+   계열 색(--series-*)은 검증기(validate_palette.js)를 통과한 순서 그대로다:
+   1 FAQ(파랑) · 2 LLM(주황) · 3 미응답(청록). 필터로 계열이 줄어도 색은 바뀌지 않는다. */
+:root {
+  color-scheme: light;
+  --page: #f9f9f7;
+  --surface: #fcfcfb;
+  --ink: #0b0b0b;
+  --ink-2: #52514e;
+  --muted: #898781;
+  --grid: #e1e0d9;
+  --axis: #c3c2b7;
+  --ring: rgba(11, 11, 11, 0.1);
+  --wash: rgba(11, 11, 11, 0.04);
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
+  --series-3: #1baf7a;
+  --good: #006300;
+  --warn-bg: #fff4dc;
+  --warn-ink: #6b4a00;
+  font-family: system-ui, -apple-system, "Segoe UI", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) {
+    color-scheme: dark;
+    --page: #0d0d0d;
+    --surface: #1a1a19;
+    --ink: #f0efec;
+    --ink-2: #c3c2b7;
+    --muted: #898781;
+    --grid: #2c2c2a;
+    --axis: #383835;
+    --ring: rgba(255, 255, 255, 0.1);
+    --wash: rgba(255, 255, 255, 0.05);
+    --series-1: #3987e5;
+    --series-2: #d95926;
+    --series-3: #199e70;
+    --good: #0ca30c;
+    --warn-bg: #3a2c08;
+    --warn-ink: #f5d58a;
+  }
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--page); color: var(--ink); }
+button, input, select { font: inherit; color: inherit; }
+
+.wrap { max-width: 1200px; margin: 0 auto; padding: 24px 16px 48px; }
+
+header.top { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 16px; margin-bottom: 16px; }
+header.top h1 { font-size: 22px; margin: 0; letter-spacing: -0.01em; }
+header.top p { margin: 4px 0 0; color: var(--ink-2); font-size: 14px; }
+.badge { display: inline-block; font-size: 12px; padding: 3px 8px; border-radius: 999px; background: var(--warn-bg); color: var(--warn-ink); }
+
+/* 필터: 차트 위 한 줄. 아래 모든 숫자·차트·표가 같은 기간을 본다. */
+.filters { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 16px; }
+.seg { display: inline-flex; border: 1px solid var(--ring); border-radius: 8px; overflow: hidden; background: var(--surface); }
+.seg button { border: 0; background: transparent; padding: 6px 12px; cursor: pointer; font-size: 14px; }
+.seg button + button { border-left: 1px solid var(--ring); }
+.seg button:hover { background: var(--wash); }
+.seg button[aria-pressed="true"] { font-weight: 700; }
+.filters input[type="date"] { border: 1px solid var(--ring); border-radius: 8px; padding: 5px 8px; background: var(--surface); font-size: 14px; }
+.filters .hint { color: var(--muted); font-size: 13px; }
+
+.grid { display: grid; gap: 16px; grid-template-columns: repeat(12, 1fr); }
+.card { background: var(--surface); border: 1px solid var(--ring); border-radius: 12px; padding: 16px; min-width: 0; }
+.card h2 { font-size: 15px; margin: 0 0 2px; }
+.card .sub { color: var(--ink-2); font-size: 13px; margin: 0 0 12px; }
+.span-12 { grid-column: span 12; }
+.span-8 { grid-column: span 8; }
+.span-6 { grid-column: span 6; }
+.span-4 { grid-column: span 4; }
+@media (max-width: 900px) {
+  .span-8, .span-6, .span-4 { grid-column: span 12; }
+}
+
+/* 지표 타일 */
+.tiles { display: grid; gap: 16px; grid-template-columns: minmax(220px, 1.3fr) repeat(auto-fit, minmax(140px, 1fr)); margin-bottom: 16px; }
+.tile { background: var(--surface); border: 1px solid var(--ring); border-radius: 12px; padding: 14px 16px; }
+.tile .label { color: var(--ink-2); font-size: 13px; }
+.tile .value { font-size: 28px; font-weight: 600; margin-top: 4px; }
+.tile .note { color: var(--muted); font-size: 12px; margin-top: 2px; }
+.tile.hero .value { font-size: 52px; line-height: 1.05; }
+@media (max-width: 600px) { .tiles { grid-template-columns: 1fr 1fr; } .tile.hero { grid-column: span 2; } }
+
+/* 범례: 차트 위, 막대 모양 키 */
+.legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 13px; color: var(--ink-2); margin-bottom: 8px; }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend i { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+
+/* 툴팁: 값이 먼저, 이름은 뒤 */
+.tip { background: var(--surface); border: 1px solid var(--ring); border-radius: 8px; padding: 8px 10px; font-size: 13px; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08); }
+.tip .head { color: var(--ink-2); margin-bottom: 4px; }
+.tip .row { display: flex; align-items: center; gap: 8px; }
+.tip .row b { min-width: 28px; text-align: right; font-variant-numeric: tabular-nums; }
+.tip .key { width: 12px; height: 2px; border-radius: 1px; display: inline-block; }
+
+details.table-view { margin-top: 8px; font-size: 13px; }
+details.table-view summary { cursor: pointer; color: var(--ink-2); }
+
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--grid); vertical-align: top; }
+th { color: var(--ink-2); font-weight: 600; }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+td.when { white-space: nowrap; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+
+/* 좁은 화면에서는 질문 표를 행마다 쌓아서 보여 준다 (가로 스크롤 없이) */
+@media (max-width: 600px) {
+  table.qtable thead { display: none; }
+  table.qtable tr { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; padding: 8px 0; border-bottom: 1px solid var(--grid); }
+  table.qtable td { border: 0; padding: 0; }
+  table.qtable td.q { grid-column: 1 / -1; grid-row: 2; font-size: 14px; }
+  table.qtable td.who { display: none; }
+}
+
+.route { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; color: var(--ink-2); }
+.route i { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+
+.toolbar { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
+.toolbar input, .toolbar select { border: 1px solid var(--ring); border-radius: 8px; padding: 6px 10px; background: var(--surface); font-size: 14px; }
+.toolbar input { flex: 1 1 220px; }
+.pager { display: flex; align-items: center; justify-content: space-between; margin-top: 8px; color: var(--ink-2); font-size: 13px; }
+.pager button { border: 1px solid var(--ring); background: var(--surface); border-radius: 8px; padding: 4px 10px; cursor: pointer; }
+.pager button:disabled { opacity: 0.4; cursor: default; }
+
+/* FAQ 보완 후보 */
+.sugg { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.sugg li { border: 1px solid var(--grid); border-radius: 10px; padding: 10px 12px; }
+.sugg .q { font-weight: 600; }
+.sugg .cnt { color: var(--ink-2); font-weight: 400; font-size: 13px; margin-left: 6px; }
+.sugg .others { color: var(--ink-2); font-size: 13px; margin: 4px 0 0; }
+.sugg .meta { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 8px; font-size: 13px; color: var(--ink-2); }
+.chip { border: 1px solid var(--ring); border-radius: 999px; padding: 2px 8px; font-size: 12px; color: var(--ink); background: var(--wash); }
+.new { color: var(--warn-ink); background: var(--warn-bg); border-radius: 6px; padding: 2px 6px; }
+
+.empty { color: var(--muted); font-size: 14px; padding: 24px 0; text-align: center; }
+.loading { opacity: 0.55; transition: opacity 0.2s; }
+.error { background: var(--warn-bg); color: var(--warn-ink); border-radius: 8px; padding: 10px 12px; margin-bottom: 16px; font-size: 14px; }
+.login { max-width: 360px; margin: 80px auto; }
+.login input { width: 100%; border: 1px solid var(--ring); border-radius: 8px; padding: 8px 10px; margin: 8px 0; background: var(--surface); }
+.login button { border: 0; background: var(--series-1); color: #fff; border-radius: 8px; padding: 8px 14px; cursor: pointer; }
+footer { color: var(--muted); font-size: 12px; margin-top: 24px; }
+footer a { color: inherit; }

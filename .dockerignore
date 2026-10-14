@@ -1,0 +1,15 @@
+# 학생 질문·사용자 ID가 든 로그와 토큰은 절대 이미지에 들어가면 안 된다
+stats.log
+unanswered.log
+digest_state.txt
+.env
+.env.*
+!.env.example
+*.token
+.gh_token
+
+.git
+**/__pycache__
+**/*.pyc
+**/node_modules
+dashboard/web/dist

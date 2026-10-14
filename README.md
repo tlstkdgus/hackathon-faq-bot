@@ -30,6 +30,7 @@
 | `.env.example` | 환경변수 템플릿 (복사해서 `.env`로 사용) |
 | `deploy/` | 서버 배포 세트 — [배포 가이드](deploy/DEPLOY.md) |
 | `RETROSPECTIVE.md` | **14기 운영 회고** — 실제 질문 통계와 다음 기수 권고 |
+| `dashboard/` | **운영 현황판** (FastAPI + React) — 로그를 차트로 보기 · [현황판 가이드](dashboard/README.md) |
 
 > `faq_engine` · `hours` · `stats_engine` · `digest` 는 discord 의존성이 없어
 > 봇을 띄우지 않고도 단독으로 실행·테스트할 수 있습니다.

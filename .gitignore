@@ -39,3 +39,14 @@ faq_cache.md
 .idea/
 .DS_Store
 Thumbs.db
+
+# 현황판 화면 빌드 결과·의존성
+dashboard/web/node_modules/
+dashboard/web/dist/
+dashboard/.env
+
+# 예외: 현황판 시연용 예시 로그는 실제 학생 데이터가 아니므로 커밋한다
+# (dashboard/README.md '개인정보 원칙' 참고)
+!dashboard/sample-data/stats.log
+!dashboard/sample-data/unanswered.log
+dashboard/web/*.tsbuildinfo

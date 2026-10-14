@@ -102,18 +102,36 @@ cp .env.example .env        # DASHBOARD_TOKEN, LOG_DIR 채우기
 docker compose up -d --build
 ```
 
-### 봇 서버(오라클 VM)에 띄울 때
+### 봇 서버(오라클 VM)에 띄울 때 — 권장
 
-봇과 같은 서버에 띄우면 로그를 복사할 필요 없이 바로 읽습니다.
-`.env`의 `LOG_DIR`은 봇의 `DATA_DIR`(지정 안 했다면 봇 저장소 폴더)로 둡니다.
-
-기본 설정은 서버 안(127.0.0.1:8080)에서만 열리므로, 내 컴퓨터에서는 SSH 터널로 봅니다.
-봇처럼 **방화벽 포트를 열지 않아도 됩니다.**
+무료 AMD 인스턴스는 RAM이 1GB라 도커를 올리기엔 빠듯합니다. 그래서 서버에서는 도커 없이,
+**봇과 같은 가상환경에 FastAPI만 더 깔고 uvicorn 하나로 화면까지 내보냅니다.**
+봇처럼 systemd 서비스로 등록되어 재부팅해도 다시 뜹니다.
 
 ```bash
-ssh -L 8080:127.0.0.1:8080 ubuntu@<서버 IP>
-# → 내 브라우저에서 http://localhost:8080/?token=<DASHBOARD_TOKEN>
+# 서버에 SSH로 접속한 뒤
+cd ~/hackathon-faq-bot
+git pull
+bash dashboard/deploy/setup.sh
 ```
+
+스크립트가 하는 일:
+
+1. 봇 가상환경에 FastAPI·uvicorn 설치
+2. Node 18 이상이 없으면 Node 20 설치 후 화면 빌드 (1GB 서버에서 1~3분)
+3. `dashboard/.env.server` 생성 — **접근 토큰과 ID 솔트를 무작위로 만들고**, 로그 폴더는 봇 `.env`의 `DATA_DIR`(없으면 봇 폴더)
+4. `faq-dashboard` 서비스 등록·시작 후 `/api/health`가 실제로 응답하고 `stats.log`가 보이는지 확인
+5. 접속 방법(SSH 터널 명령과 토큰이 붙은 주소) 출력
+
+현황판은 **서버 안(127.0.0.1:8080)에서만** 열립니다. 방화벽 포트를 열지 않고 SSH 터널로 봅니다.
+
+```bash
+# 내 컴퓨터에서 (평소 서버 접속 명령에 -L 옵션만 추가)
+ssh -L 8080:127.0.0.1:8080 ubuntu@<서버 IP>
+# 그 창을 켜 둔 채로 브라우저에서 → http://localhost:8080/?token=<토큰>
+```
+
+코드를 갱신했으면 `git pull && bash dashboard/deploy/setup.sh`를 다시 실행하면 됩니다(여러 번 실행해도 안전).
 
 ## API
 

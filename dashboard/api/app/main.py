@@ -19,6 +19,7 @@ from functools import lru_cache
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from . import config, logs
 from .schemas import (
@@ -257,3 +258,9 @@ def faq():
         categories=[{"category": c, "entries": n} for c, n in cats.items()],
         history=history,
     )
+
+
+# ── 화면 (선택) ──────────────────────────────────────────────────
+# 반드시 맨 마지막에 붙인다. "/"에 붙이므로 위의 /api·/docs보다 먼저 오면 다 가려진다.
+if (config.WEB_DIST / "index.html").exists():
+    app.mount("/", StaticFiles(directory=config.WEB_DIST, html=True), name="web")

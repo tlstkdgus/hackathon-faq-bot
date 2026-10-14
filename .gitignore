@@ -50,3 +50,6 @@ dashboard/.env
 !dashboard/sample-data/stats.log
 !dashboard/sample-data/unanswered.log
 dashboard/web/*.tsbuildinfo
+
+# 현황판 서버 설정 (토큰 포함)
+dashboard/.env.server

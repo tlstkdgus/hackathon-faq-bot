@@ -29,6 +29,11 @@ FAQ_HISTORY_FILE = Path(
     os.environ.get("FAQ_HISTORY_FILE") or Path(__file__).resolve().parent / "data" / "faq_history.json"
 )
 
+# 빌드된 화면(dashboard/web/dist)을 API 서버가 직접 내보낼지.
+# 서버에 nginx·도커 없이 uvicorn 하나로 띄울 때 쓴다 (dashboard/deploy/setup.sh).
+# 폴더가 없으면 화면은 내보내지 않고 API만 동작한다 (도커에서는 nginx가 화면을 맡는다).
+WEB_DIST = Path(os.environ.get("WEB_DIST") or _REPO_ROOT / "dashboard" / "web" / "dist")
+
 # 사용자 ID는 화면에 그대로 내보내지 않는다. 같은 사람인지만 구분되도록
 # 이 값을 섞어 해시한 짧은 별칭으로 바꾼다. 배포할 때는 .env에서 바꿔 두는 게 좋다.
 ID_SALT = os.environ.get("DASHBOARD_ID_SALT", "faq-bot-dashboard")

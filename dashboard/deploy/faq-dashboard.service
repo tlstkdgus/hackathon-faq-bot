@@ -1,0 +1,42 @@
+# FAQ 봇 운영 현황판을 서버에서 상시 실행하기 위한 systemd 유닛 파일.
+#
+# 직접 손대지 않아도 됩니다. dashboard/deploy/setup.sh 가 사용자 이름과
+# 경로를 바꿔서 /etc/systemd/system/faq-dashboard.service 로 설치합니다.
+
+[Unit]
+Description=해커톤 FAQ 봇 운영 현황판 (FastAPI)
+Documentation=https://github.com/tlstkdgus/hackathon-faq-bot/tree/main/dashboard
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=0
+StartLimitBurst=0
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/hackathon-faq-bot
+
+# 봇과 같은 가상환경을 쓴다. 현황판은 봇 모듈(faq_engine, digest)을 import하기 때문이다.
+# 127.0.0.1에만 열어 둔다 — 밖에서는 SSH 터널로만 들어온다 (방화벽 포트를 열지 않는다).
+ExecStart=/home/ubuntu/hackathon-faq-bot/.venv/bin/uvicorn app.main:app --app-dir dashboard/api --host 127.0.0.1 --port 8080
+
+# DASHBOARD_TOKEN, DATA_DIR 등은 setup.sh가 만든 이 파일에서 읽는다 (git에 안 올라감)
+EnvironmentFile=/home/ubuntu/hackathon-faq-bot/dashboard/.env.server
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONIOENCODING=utf-8
+
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+# 현황판은 로그를 읽기만 한다. 권한을 좁혀 둔다.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectKernelTunables=true
+ProtectControlGroups=true
+
+[Install]
+WantedBy=multi-user.target

@@ -13,6 +13,9 @@ on:
       - "requirements.txt"
       - "deploy/**"
       - ".github/workflows/deploy.yml"
+      # 운영 현황판(dashboard/)은 봇과 따로 Docker로 돈다. 현황판 파이썬만 고쳐도
+      # 위의 "**.py"에 걸려 봇이 재시작되므로 제외한다.
+      - "!dashboard/**"
   workflow_dispatch: # Actions 탭에서 수동 실행
 
 # 배포가 겹치면 두 개의 systemctl restart가 서로를 밟는다. 한 번에 하나만.
